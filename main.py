@@ -8,8 +8,9 @@ import pyttsx3
 import webbrowser
 import traceback
 import logging
-import music_library
-from google import genai
+import email
+from datetime import datetime, timedelta
+
 import music_library
 import requests
 import os
@@ -18,22 +19,38 @@ import time
 import customtkinter as ctk
 from tkinter import StringVar
 import threading
-import datetime
-import os
 import winshell
+from deep_translator import GoogleTranslator
 from app_louncher import open_app
+from remainder_perser import create_reminder
 from system_commands import system_command
+from remainder_perser import create_reminder 
+from calendar_manager import add_event, get_today_events
+from email_assistant import GeminiEmail, create_email, takeCommand
+from calendar_ai import parse_calendar_command
+from calendar_manager import add_event
+from logger import log_info, log_warning, log_error
 
+
+waiting_for_confirmation = False
+pending_action = None
+pending_app = None
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
-now = datetime.datetime.now().strftime("%H:%M:%S")
-         
+
+from Reminder_Database import (
+    add_reminder,
+    start_reminder_service,
+    get_today_reminders,
+    get_all_reminders,
+    delete_reminder
+)
 
 
-ELEVEN_API_KEY = "sk_be33a4952f8f159c45b48cdb6ed35b291356de78d7da766d"
-VOICE_ID = "YoAoLpzKBspSMC2Ombfb"
+
+
 GEMINI_API_KEY = "AQ.Ab8RN6JVIizOwBhoHmNdGQWwLbXOw9Q8GVsIfvDdLtRv5ohtRw"
 import sqlite3
 
@@ -47,6 +64,7 @@ CREATE TABLE IF NOT EXISTS chat_history (
     message TEXT
 )
 """)
+
 def get_recent_messages(limit=20):
     conn = sqlite3.connect("jarvis_memory.db")
     cursor = conn.cursor()
@@ -66,6 +84,65 @@ def get_recent_messages(limit=20):
     return rows
 
 
+ 
+def __init__(self, db_name="jarvis_memory.db", poll_interval=30):
+        self.db_name = db_name
+        self.poll_interval = poll_interval
+        self.initialize_database()
+
+def initialize_database(self):
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS reminders(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                reminder_date TEXT NOT NULL,
+                reminder_time TEXT NOT NULL,
+                completed INTEGER DEFAULT 0
+            )
+        """)
+        conn.commit()
+        conn.close()
+
+def check_reminders(self):
+        print("Reminder Service Started.")
+        while True:
+            now = datetime.datetime.now()
+            current_date = now.strftime("%Y-%m-%d")
+            current_time = now.strftime("%H:%M")
+
+            conn = sqlite3.connect(self.db_name)
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, title
+                FROM reminders
+                WHERE reminder_date=? AND reminder_time=? AND completed=0
+            """, (current_date, current_time))
+
+            reminders = cursor.fetchall()
+            for reminder_id, title in reminders:
+                print("Reminder Triggered:", reminder_id, title)
+                speak(f"Reminder. {title}")
+                cursor.execute("""
+                    UPDATE reminders
+                    SET completed=1
+                    WHERE id=?
+                """, (reminder_id,))
+                conn.commit()
+
+            conn.close()
+            time.sleep(self.poll_interval)
+
+def start(self):
+        thread = threading.Thread(
+            target=self.check_reminders,
+            daemon=True
+        )
+        thread.start()
+        return thread
+
+
 # SPEECH FUNCTIONS
 
 
@@ -79,6 +156,21 @@ def update_status(text):
     global status
     if status:
         status.set(text)
+def translate_to_english(text):
+    try:
+        translated = GoogleTranslator(
+            source="auto",
+            target="en"
+        ).translate(text)
+
+        print(f"Original : {text}")
+        print(f"English : {translated}")
+
+        return translated.lower()
+
+    except Exception as e:
+        print("Translation Error:", e)
+        return text.lower()
 def gui():
 
     root = ctk.CTk()
@@ -254,44 +346,7 @@ def gui():
     root.mainloop()
 
 
-
-def speak(text):
-
-    if text.lower() not in [
-    "yes sir",
-    "listening",
-    "give a command",
-    "sorry, i didn't understand",
-    "initializing jarvis"
-]:
-        save_message("assistant", text)
-
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}"
-
-    headers = {
-        "xi-api-key": ELEVEN_API_KEY,
-        "Content-Type": "application/json"
-    }
-
-    data = {
-        "text": text
-    }
-
-    response = requests.post(url, json=data, headers=headers)
-
-    filename = f"speech_{int(time.time()*1000)}.mp3"
-
-    with open(filename, "wb") as f:
-        f.write(response.content)
-
-    try:
-        playsound.playsound(filename)
-
-        if os.path.exists(filename):
-            os.remove(filename)
-
-    except Exception as e:
-        print("Error playing audio:", e)
+from speak import speak
 
 def save_message(role, message):
     conn = sqlite3.connect("jarvis_memory.db")
@@ -304,8 +359,22 @@ def save_message(role, message):
 
     conn.commit()
     conn.close()
+    
 
+start_reminder_service()
+
+# TEMPORARY TEST
+
+def internet_available():
+    try:
+        requests.get("https://www.google.com", timeout=3)
+        return True
+    except requests.RequestException:
+        return False
 def aicommand(command):
+    if not internet_available():
+     return "You're offline. Please check your internet connection."
+
     if command.lower().strip() == "jarvis":
         return ""
     save_message("user", command)
@@ -360,11 +429,25 @@ Give concise and useful answers.
         return reply
 
     except Exception as e:
-        print("Gemini Error:", e)
-        return "Sorry, I could not connect to Gemini."
+     log_error("Gemini", e)
+
+     error_text = str(e)
+
+     if "429" in error_text or "RESOURCE_EXHAUSTED" in error_text:
+        return "I've reached my AI usage limit. Please try again in a minute."
+
+     elif "401" in error_text:
+        return "My AI API key is invalid."
+
+     elif "403" in error_text:
+        return "My AI service denied access."
+
+     else:
+        return "I couldn't contact my AI service."
 def processcommand(command):
-   
+    
     command = command.lower().strip()
+    command = translate_to_english(command)
 
     # Handle Windows commands first
     if handle_windows_commands(command):
@@ -392,6 +475,60 @@ def processcommand(command):
         webbrowser.open("https://www.google.com")
         return
 
+    if command.lower().startswith("remind me"):
+        try:
+            create_reminder(command)
+            speak("Reminder added successfully.")
+        except Exception as e:
+            print("Reminder Error:", e)
+            speak("Sorry, I couldn't add the reminder.")
+        return
+    
+    elif command.startswith(("schedule", "add", "create")):
+
+     title, start = parse_calendar_command(command)
+
+     if start is None:
+        speak("Sorry, I could not understand the date and time.")
+        return
+
+     if title == "":
+        title = "Untitled Event"
+
+     end = start + timedelta(hours=1)
+
+     add_event(title, start, end)
+
+     speak(f"{title} has been added to your calendar.")
+    elif "today schedule" in command.lower() or "today's schedule" in command.lower():
+
+     events = get_today_events()
+
+     if not events:
+        speak("You have no events scheduled for today.")
+        return
+
+     speak(f"You have {len(events)} event{'s' if len(events) > 1 else ''} today.")
+
+     for event in events:
+        summary = event.get("summary", "Untitled Event")
+
+        start = event["start"].get("dateTime", event["start"].get("date"))
+
+        try:
+            dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+            time_str = dt.strftime("%I:%M %p")
+            speak(f"{summary} at {time_str}")
+        except Exception:
+            speak(summary)
+    if "write an email" in command:
+     speak("What should I write in the email?")
+     email_text = takeCommand()      # your speech recognition function
+
+     email_client = GeminiEmail()
+     email = email_client.draft(email_text)
+     speak.speak("Here is your email.")
+     print(email)
     if "news" in command:
         speak("Fetching news for you")
         try:
@@ -484,6 +621,7 @@ def voice_loop():
            
 
         try:
+            log_info("Listening for wake word...")
             print("Listening for wake word...")
 
             with sr.Microphone(device_index=1) as source:
@@ -521,8 +659,8 @@ def voice_loop():
             print("Listening timed out")
 
         except Exception as e:
-            print("ERROR:", e)
-            traceback.print_exc()
+          log_error("Voice Loop", e)
+          speak("Something went wrong, but I'm still running.")
 if __name__ == "__main__":
     speak("Initializing Jarvis")
 

@@ -1,0 +1,1 @@
+{"detail":{"type":"authentication_error","code":"unauthorized","message":"Neither authorization header nor xi-api-key received, please provide one.","status":"needs_authorization","request_id":"a8b6de10c45db137980a53c24d609b97"}}
