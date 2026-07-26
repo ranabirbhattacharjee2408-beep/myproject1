@@ -1,11 +1,13 @@
 import abc
-import google.generativeai as genai
+from urllib import response
+from xml.parsers.expat import model
 
-import speak
+from config import GEMINI_API_KEY
+from google import genai
 
-GEMINI_API_KEY = "AQ.Ab8RN6JVIizOwBhoHmNdGQWwLbXOw9Q8GVsIfvDdLtRv5ohtRw"
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel("gemini-2.5-flash")
+client = genai.Client(api_key=GEMINI_API_KEY)
+
+
 
 
 class Email(abc.ABC):
@@ -44,10 +46,14 @@ class GeminiEmail(Email):
             "User Request:\n"
             f"{prompt}\n"
         )
-        response = model.generate_content(prompt=template)
-        self.email = getattr(response, "text", str(response))
-        return self.email
+        response = client.models.generate_content(
+         model="gemini-2.5-flash",
+         contents=template
+             )
 
+        self.email = response.text
+        return self.email
+        
     def edit(self, current_email: str, instruction: str) -> str:
         template = (
             "You are an expert email writing assistant.\n\n"
@@ -57,8 +63,11 @@ class GeminiEmail(Email):
             "Instruction:\n"
             f"{instruction}\n"
         )
-        response = model.generate_content(prompt=template)
-        self.email = getattr(response, "text", str(response))
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=template
+        )
+        self.email = response.text
         return self.email
 
     def save(self, path: str = "draft.txt") -> None:

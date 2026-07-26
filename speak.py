@@ -5,6 +5,10 @@ import pygame
 from dotenv import load_dotenv
 import pyttsx3
 from logger import log_error
+import threading
+
+speaking = False
+stop_requested = False
 # -----------------------------
 # Initialize Pygame Mixer
 # -----------------------------
@@ -40,8 +44,30 @@ def save_message(sender, text):
             file.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - {sender}: {text}\n")
     except Exception:
         pass
+def play_audio(filename):
+    global speaking, stop_requested
 
+    speaking = True
+    stop_requested = False
 
+    pygame.mixer.music.load(filename)
+    pygame.mixer.music.play()
+
+    while pygame.mixer.music.get_busy():
+
+        if stop_requested:
+            pygame.mixer.music.stop()
+            break
+
+        time.sleep(0.05)
+
+    pygame.mixer.music.unload()
+    speaking = False
+
+    try:
+        os.remove(filename)
+    except Exception:
+        pass
 # -----------------------------
 # Speak Function
 # -----------------------------
@@ -52,6 +78,7 @@ def offline_speak(text):
     except Exception as e:
         log_error("Offline TTS", e)
 def speak(text):
+    
     print(">>> speak() called")
     print("Text:", text)
 
@@ -106,13 +133,12 @@ def speak(text):
         with open(filename, "wb") as f:
             f.write(response.content)
 
-        pygame.mixer.music.load(filename)
-        pygame.mixer.music.play()
-
-        while pygame.mixer.music.get_busy():
-            time.sleep(0.1)
-
-        pygame.mixer.music.unload()
+        threading.Thread(
+        target=play_audio,
+        args=(filename,),
+        daemon=True
+        ).start()
+        print("Speak finished")
 
         try:
             os.remove(filename)
@@ -122,6 +148,13 @@ def speak(text):
     except Exception as e:
         log_error("ElevenLabs", e)
         offline_speak(text)
+def stop_speaking():
+    global speaking, stop_requested
+
+    if speaking:
+        stop_requested = True
+        pygame.mixer.music.stop()
+        speaking = False
 
 
 # -----------------------------

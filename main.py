@@ -30,11 +30,15 @@ from email_assistant import GeminiEmail, create_email, takeCommand
 from calendar_ai import parse_calendar_command
 from calendar_manager import add_event
 from logger import log_info, log_warning, log_error
-
+from speak import stop_speaking
+from audio.microphone import listen
+from config import GEMINI_API_KEY
 
 waiting_for_confirmation = False
 pending_action = None
 pending_app = None
+email_draft = None
+email_mode = False
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -50,8 +54,9 @@ from Reminder_Database import (
 
 
 
+jarvis_awake = False
+processing = False
 
-GEMINI_API_KEY = "AQ.Ab8RN6JVIizOwBhoHmNdGQWwLbXOw9Q8GVsIfvDdLtRv5ohtRw"
 import sqlite3
 
 conn = sqlite3.connect("jarvis_memory.db")
@@ -148,8 +153,7 @@ def start(self):
 
 conn.commit()
 
-r = sr.Recognizer()
-engine = pyttsx3.init('sapi5')
+
 
 
 def update_status(text):
@@ -360,6 +364,47 @@ def save_message(role, message):
     conn.commit()
     conn.close()
     
+def save_email(draft):
+    """Save an email draft using create_email from email_assistant."""
+    try:
+        # create_email should handle persisting the draft
+        create_email(draft)
+        speak("Email saved.")
+    except Exception as e:
+        print("Save email error:", e)
+        speak("Failed to save the email.")
+
+def edit_email():
+    """Allow user to edit the email draft."""
+    global email_draft
+    try:
+        speak("What changes would you like to make?")
+        edit_text = takeCommand()
+        if edit_text:
+            email_draft += f"\n{edit_text}"
+            speak("Email updated.")
+        show_email(email_draft)
+    except Exception as e:
+        print("Edit email error:", e)
+        speak("Failed to edit the email.")
+
+def send_email(draft):
+    """Send the email draft."""
+    try:
+        speak("Sending email.")
+        # create_email should handle sending
+        create_email(draft)
+        speak("Email sent successfully.")
+    except Exception as e:
+        print("Send email error:", e)
+        speak("Failed to send the email.")
+
+def show_email(draft):
+    """Display email draft in the GUI."""
+    try:
+        print(f"Email Draft:\n{draft}")
+    except Exception as e:
+        print("Show email error:", e)
 
 start_reminder_service()
 
@@ -445,7 +490,8 @@ Give concise and useful answers.
      else:
         return "I couldn't contact my AI service."
 def processcommand(command):
-    
+    global email_mode
+    global email_draft
     command = command.lower().strip()
     command = translate_to_english(command)
 
@@ -455,6 +501,26 @@ def processcommand(command):
     if command == "jarvis":
         return
     API_KEY = "875d98a266774be28fa8ac00126fead4"
+    
+
+    if email_mode:
+        if "edit" in command:
+            edit_email()
+            return
+
+        elif "save" in command:
+            save_email(email_draft)
+            email_mode = False
+            return
+
+        elif "send" in command:
+            send_email(email_draft)
+            email_mode = False
+            return
+
+        else:
+            speak("Please say edit, save or send.")
+            return
 
     if any(command.startswith(word) for word in ["open", "launch", "start", "run"]):
         response = open_app(command)
@@ -521,14 +587,28 @@ def processcommand(command):
             speak(f"{summary} at {time_str}")
         except Exception:
             speak(summary)
-    if "write an email" in command:
-     speak("What should I write in the email?")
-     email_text = takeCommand()      # your speech recognition function
+    elif "write an email" in command:
+        
+        speak("What should I write?")
 
-     email_client = GeminiEmail()
-     email = email_client.draft(email_text)
-     speak.speak("Here is your email.")
-     print(email)
+        prompt = takeCommand()
+
+        if not prompt:
+            speak("I didn't catch that.")
+            return
+
+        email_client = GeminiEmail()
+
+        email_draft = email_client.draft(prompt)
+
+        email_mode = True
+
+        # Show in GUI
+        show_email(email_draft)
+
+        speak("I've drafted the email.")
+        speak("Would you like to edit, save or send it?")
+        return
     if "news" in command:
         speak("Fetching news for you")
         try:
@@ -618,49 +698,62 @@ def handle_windows_commands(command):
 def voice_loop():
 
     while True:
-           
 
         try:
-            log_info("Listening for wake word...")
+
             print("Listening for wake word...")
 
-            with sr.Microphone(device_index=1) as source:
-                r.adjust_for_ambient_noise(source, duration=1)
-                audio = r.listen(source, timeout=5, phrase_time_limit=5)
+            word = listen(timeout=5, phrase_time_limit=5)
 
-            word = r.recognize_google(audio).lower()
-            print("Heard:", word)
+            if word is None:
+                continue
 
             if "jarvis" in word:
 
                 speak("Yes sir")
 
-                print("give a  command...")
+                print("Waiting for command...")
 
-                with sr.Microphone() as source:
-                    r.adjust_for_ambient_noise(source, duration=1)
-                    audio = r.listen(source, timeout=5, phrase_time_limit=5)
+                command = listen(timeout=8, phrase_time_limit=8)
 
-                try:
-                    command = r.recognize_google(audio).lower()
-                    print("Command:", command)
-                    processcommand(command)
+                if command is None:
+                    speak("I didn't catch that.")
+                    continue
 
-                except sr.UnknownValueError:
-                    speak("I could not understand the command")
+                print("Command:", command)
 
-                except sr.RequestError:
-                    speak("Network error in speech recognition")
-
-        except sr.UnknownValueError:
-            print("Could not understand wake word")
-
-        except sr.WaitTimeoutError:
-            print("Listening timed out")
+                processcommand(command)
 
         except Exception as e:
-          log_error("Voice Loop", e)
-          speak("Something went wrong, but I'm still running.")
+
+            print("Voice Loop Error:", e)
+
+            time.sleep(2)
+
+def listen_for_command():
+    try:
+        command = listen(
+            timeout=8,
+            phrase_time_limit=8
+        )
+
+        if command is None:
+            speak("I didn't catch that.")
+            return
+
+        processcommand(command)
+
+    except sr.UnknownValueError:
+        pass
+    except sr.WaitTimeoutError:
+        pass
+    except sr.RequestError:
+        speak("Speech service is unavailable")
+    except Exception as e:
+        print("Voice Loop Error:", e)
+        traceback.print_exc()
+        time.sleep(2)
+
 if __name__ == "__main__":
     speak("Initializing Jarvis")
 
