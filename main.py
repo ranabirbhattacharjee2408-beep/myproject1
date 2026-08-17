@@ -1,30 +1,71 @@
 
-import uuid
-import pyautogui
-import pygame
+
 from google import genai
 import speech_recognition as sr
 import pyttsx3
 import webbrowser
+import subprocess
 import traceback
 import logging
 import email
+import shutil
 from datetime import datetime, timedelta
+import  pywhatkit
+import urllib
+import tkinter as tk
+import threading
+import time
+import traceback
 
-import music_library
+tk_root = None
+writing_window = None
+try:
+    from memory import get_recent_messages
+    from writing_mode import WritingMode
+except Exception:
+    # Fallback: try relative import (if package) or provide a stub to avoid import errors
+    try:
+        from .jarvis_memory import get_recent_messages  # type: ignore
+    except Exception:
+        def get_recent_messages(count=10):
+            """Fallback stub used when jarvis_memory is unavailable."""
+            return []
+from browsersearch import search_web
+
 import requests
 import os
-import playsound
 import time
 import customtkinter as ctk
+writing_window = None
+
+def find_es_path():
+    path = shutil.which("es") or shutil.which("everything")
+    if path:
+        return path
+
+    candidates = [
+        r"C:\Program Files\Everything\Everything.exe",
+        r"C:\Program Files (x86)\Everything\Everything.exe",
+        r"C:\Program Files\Voidtools\Everything.exe",
+        r"C:\Program Files (x86)\Voidtools\Everything.exe"
+    ]
+
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return candidate
+
+    return None
+
+
+ES_PATH = find_es_path()
 from tkinter import StringVar
 import threading
 import winshell
+from abc import ABC, abstractmethod
 from deep_translator import GoogleTranslator
 from app_louncher import open_app
 from remainder_perser import create_reminder
 from system_commands import system_command
-from remainder_perser import create_reminder 
 from calendar_manager import add_event, get_today_events
 from email_assistant import GeminiEmail, create_email, takeCommand
 from calendar_ai import parse_calendar_command
@@ -33,12 +74,112 @@ from logger import log_info, log_warning, log_error
 from speak import stop_speaking
 from audio.microphone import listen
 from config import GEMINI_API_KEY
+from conversation_mode import start_conversational
 
+pending_files = []
+
+conversation_mode = None
 waiting_for_confirmation = False
 pending_action = None
 pending_app = None
 email_draft = None
 email_mode = False
+
+
+class ConversationModeBase(ABC):
+    @abstractmethod
+    def activate(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def deactivate(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def process(self, command):
+        raise NotImplementedError
+
+    @abstractmethod
+    def start(self):
+        raise NotImplementedError
+
+
+class conversation_mode(ConversationModeBase):
+    def __init__(self):
+        self.active = False
+        self.history_limit = 20
+        self.history = get_recent_messages(self.history_limit)
+
+    def activate(self):
+        if not self.active:
+            self.active = True
+            save_message("system", "Conversation mode activated.")
+        return self.active
+
+    def deactivate(self):
+        if self.active:
+            self.active = False
+            save_message("system", "Conversation mode deactivated.")
+        return self.active
+
+    def process(self, command):
+        if not isinstance(command, str) or not command.strip():
+            return
+
+        command = translate_to_english(command)
+
+        if "close conversation mode" in command.lower():
+            self.deactivate()
+            speak("Conversation mode deactivated. Going to standby mode.")
+            return
+
+        save_message("user", command)
+
+        response = aicommand(command)
+
+        if response:
+            save_message("assistant", response)
+
+        print(response)
+        speak(response)
+        return response
+
+    def start(self):
+        if self.active:
+            speak("Conversation mode is already active.")
+            return
+
+        self.activate()
+        speak("Conversation mode activated. You can now chat with me.")
+
+        while self.active:
+            try:
+                command = listen(timeout=8, phrase_time_limit=8)
+
+                if command is None:
+                    continue
+
+                command = command.strip()
+                if not command:
+                    continue
+
+                if "close conversation mode" in command.lower():
+                    self.deactivate()
+                    speak("Conversation mode deactivated. Going to standby mode.")
+                    break
+
+                self.process(command)
+
+            except Exception as e:
+                print("Conversation mode listen error:", e)
+                time.sleep(0.5)
+
+
+conversation_mode = conversation_mode()
+
+
+def start_conversational():
+    conversation_mode.start()
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -175,179 +316,7 @@ def translate_to_english(text):
     except Exception as e:
         print("Translation Error:", e)
         return text.lower()
-def gui():
 
-    root = ctk.CTk()
-    root.title("JARVIS AI")
-    root.geometry("1000x700")
-
-    # Header
-    title = ctk.CTkLabel(
-        root,
-        text="J A R V I S",
-        font=("Arial", 40, "bold"),
-        text_color="#00FFFF"
-    )
-    title.pack(pady=20)
-
-    # Status
-    status_label = ctk.CTkLabel(
-        root,
-        text="🟢 SYSTEM ONLINE",
-        font=("Consolas", 18),
-        text_color="#00FF88"
-    )
-    status_label.pack()
-
-    # Chat Box
-    chatbox = ctk.CTkTextbox(
-        root,
-        width=900,
-        height=450,
-        font=("Consolas", 14)
-    )
-    chatbox.pack(pady=20)
-
-   
-
-    chatbox.insert("end", "JARVIS INITIALIZED...\n")
-    chatbox.insert("end", "Ready for commands.\n\n")
-
-    # Bottom Frame
-    bottom_frame = ctk.CTkFrame(root)
-    bottom_frame.pack(fill="x", padx=20, pady=10)
-
-    command_entry = ctk.CTkEntry(
-        bottom_frame,
-        width=650,
-        placeholder_text="Enter command..."
-    )
-    command_entry.pack(side="left", padx=10, pady=10)
-
-    def execute():
-        cmd = command_entry.get().strip()
-
-        if cmd:
-            chatbox.insert("end", f"You: {cmd}\n")
-
-            try:
-                # Run the command in a background thread. We don't have a
-                # synchronous "response" variable here, so just report that
-                # the command was executed; any output should be handled by
-                # processcommand itself (e.g., updating the UI or logging).
-                threading.Thread(
-                    target=processcommand,
-                    args=(cmd,),
-                    daemon=True
-                ).start()
-
-                chatbox.insert("end", "Jarvis: Command executed.\n")
-
-            except Exception as e:
-                chatbox.insert("end", f"Error: {e}\n")
-
-            chatbox.see("end")
-            command_entry.delete(0, "end")
-
-    execute_btn = ctk.CTkButton(
-        bottom_frame,
-        text="⚡ EXECUTE",
-        command=execute,
-        width=120
-    )
-    execute_btn.pack(side="left", padx=5)
-
-    root.mainloop()
-
-    # ================= CENTER =================
-
-    center = ctk.CTkFrame(root)
-    center.pack(fill="both", expand=True, padx=15, pady=10)
-
-    # Left Panel
-    left = ctk.CTkFrame(center, width=250)
-    left.pack(side="left", fill="y", padx=10, pady=10)
-
-    ctk.CTkLabel(
-        left,
-        text="SYSTEM STATUS",
-        font=("Arial", 20, "bold"),
-        text_color="#00FFFF"
-    ).pack(pady=15)
-
-    status_label = ctk.CTkLabel(
-        left,
-        text="🟢 READY",
-        font=("Consolas", 18)
-    )
-    status_label.pack(pady=10)
-
-    # Fake AI Core
-    ai_core = ctk.CTkLabel(
-        left,
-        text="◉",
-        font=("Arial", 100),
-        text_color="#00FFFF"
-    )
-    ai_core.pack(pady=40)
-
-    # Right Panel
-    right = ctk.CTkFrame(center)
-    right.pack(side="right", fill="both", expand=True, padx=10, pady=10)
-
-    ctk.CTkLabel(
-        right,
-        text="CONVERSATION",
-        font=("Arial", 20, "bold"),
-        text_color="#00FFFF"
-    ).pack(pady=10)
-
-    chatbox = ctk.CTkTextbox(
-        right,
-        width=650,
-        height=350,
-        font=("Consolas", 14)
-    )
-    chatbox.pack(fill="both", expand=True, padx=10, pady=10)
-
-    chatbox.insert("end", "JARVIS INITIALIZED...\n")
-
-    # ================= BOTTOM =================
-
-    bottom = ctk.CTkFrame(root)
-    bottom.pack(fill="x", padx=15, pady=15)
-
-    command_entry = ctk.CTkEntry(
-        bottom,
-        width=650,
-        placeholder_text="Enter command..."
-    )
-    command_entry.pack(side="left", padx=10, pady=10)
-
-    def execute():
-        cmd = command_entry.get()
-        if cmd:
-            chatbox.insert("end", f"\nYou: {cmd}\n")
-            chatbox.insert("end", "Jarvis: Processing...\n")
-            chatbox.see("end")
-            command_entry.delete(0, "end")
-
-    execute_btn = ctk.CTkButton(
-        bottom,
-        text="⚡ EXECUTE",
-        width=120,
-        command=execute
-    )
-    execute_btn.pack(side="left", padx=5)
-
-    voice_btn = ctk.CTkButton(
-        bottom,
-        text="🎤 LISTEN",
-        width=120
-    )
-    voice_btn.pack(side="left", padx=5)
-
-    root.mainloop()
 
 
 from speak import speak
@@ -409,6 +378,40 @@ def show_email(draft):
 start_reminder_service()
 
 # TEMPORARY TEST
+def handle_power_commands(command):
+    command = command.lower().strip()
+
+    shutdown_commands = [
+        "shutdown",
+        "shut down",
+        "turn off the computer",
+        "turn off computer",
+        "power off",
+        "shutdown computer",
+    ]
+
+    restart_commands = [
+        "restart",
+        "restart computer",
+        "reboot",
+        "reboot computer",
+    ]
+
+    if command in shutdown_commands:
+        speak("Shutting down the computer.")
+        time.sleep(1)
+
+        os.system("shutdown /s /t 0")
+        return True
+
+    if command in restart_commands:
+        speak("Restarting the computer.")
+        time.sleep(1)
+
+        os.system("shutdown /r /t 0")
+        return True
+
+    return False
 
 def internet_available():
     try:
@@ -416,6 +419,132 @@ def internet_available():
         return True
     except requests.RequestException:
         return False
+
+def open_writing_mode():
+    writing_window = None
+
+
+# ============================================================
+# WRITING MODE
+# ============================================================
+
+writing_window = None
+
+
+# ============================================================
+# WRITING MODE
+# ============================================================
+
+writing_window = None
+
+
+def _create_writing_mode():
+
+    global writing_window
+
+    try:
+
+        # ------------------------------------------------------
+        # Already open?
+        # ------------------------------------------------------
+
+        if writing_window is not None:
+
+            try:
+
+                if writing_window.window.winfo_exists():
+
+                    writing_window.window.deiconify()
+                    writing_window.window.lift()
+                    writing_window.window.focus_force()
+
+                    print(
+                        "[JARVIS] Writing Mode already open."
+                    )
+
+                    return
+
+            except Exception:
+
+                writing_window = None
+
+        # ------------------------------------------------------
+        # Create Writing Mode
+        # ------------------------------------------------------
+
+        print(
+            "[JARVIS] Creating Writing Mode..."
+        )
+
+        writing_window = WritingMode(
+            tk_root
+        )
+
+        writing_window.window.deiconify()
+        writing_window.window.lift()
+        writing_window.window.focus_force()
+
+        print(
+            "[JARVIS] Writing Mode opened successfully."
+        )
+
+    except Exception as e:
+
+        print(
+            "[WRITING MODE ERROR]",
+            e
+        )
+
+        traceback.print_exc()
+
+        try:
+            speak(
+                "I couldn't open writing mode."
+            )
+        except Exception:
+            pass
+
+
+def open_writing_mode():
+    global writing_window
+
+    try:
+        # If already open, bring it forward
+        if writing_window is not None:
+            try:
+                if writing_window.window.winfo_exists():
+                    writing_window.window.deiconify()
+                    writing_window.window.lift()
+                    writing_window.window.focus_force()
+                    return
+            except Exception:
+                writing_window = None
+
+        # Create Writing Mode
+        writing_window = WritingMode()
+
+        writing_window.window.lift()
+        writing_window.window.focus_force()
+
+        print("[JARVIS] Writing Mode opened successfully.")
+
+    except Exception as e:
+        print("[WRITING MODE ERROR]", e)
+        traceback.print_exc()
+def start_tk_system():
+    global tk_root
+
+    print("[JARVIS] Starting Tkinter system...")
+
+    tk_root = tk.Tk()
+
+    # Hide the empty root window
+    tk_root.withdraw()
+
+    print("[JARVIS] Tkinter system ready.")
+
+    # This MUST run continuously
+    tk_root.mainloop()
 def aicommand(command):
     if not internet_available():
      return "You're offline. Please check your internet connection."
@@ -489,247 +618,823 @@ Give concise and useful answers.
 
      else:
         return "I couldn't contact my AI service."
+def play_song(song):
+    pywhatkit.playonyt(song)
+writing_window = None
+
+
 def processcommand(command):
+
     global email_mode
     global email_draft
-    command = command.lower().strip()
-    command = translate_to_english(command)
+    global conversation_mode
 
-    # Handle Windows commands first
-    if handle_windows_commands(command):
-        return
-    if command == "jarvis":
-        return
-    API_KEY = "875d98a266774be28fa8ac00126fead4"
-    
+    # ============================================================
+    # 1. VALIDATE
+    # ============================================================
 
-    if email_mode:
-        if "edit" in command:
-            edit_email()
-            return
-
-        elif "save" in command:
-            save_email(email_draft)
-            email_mode = False
-            return
-
-        elif "send" in command:
-            send_email(email_draft)
-            email_mode = False
-            return
-
-        else:
-            speak("Please say edit, save or send.")
-            return
-
-    if any(command.startswith(word) for word in ["open", "launch", "start", "run"]):
-        response = open_app(command)
-        speak(response)
+    if not isinstance(command, str):
+        print("Invalid command:", command)
         return
 
-    if "play" in command:
-        song = command.replace("play ", "").strip()
-        if song in music_library.music:
-            speak(f"Playing {song}")
-            webbrowser.open(music_library.music[song])
-        else:
-            speak("Song not found in library")
-        return
-
-    if "google" in command:
-        speak("Opening Google")
-        webbrowser.open("https://www.google.com")
-        return
-
-    if command.lower().startswith("remind me"):
-        try:
-            create_reminder(command)
-            speak("Reminder added successfully.")
-        except Exception as e:
-            print("Reminder Error:", e)
-            speak("Sorry, I couldn't add the reminder.")
-        return
-    
-    elif command.startswith(("schedule", "add", "create")):
-
-     title, start = parse_calendar_command(command)
-
-     if start is None:
-        speak("Sorry, I could not understand the date and time.")
-        return
-
-     if title == "":
-        title = "Untitled Event"
-
-     end = start + timedelta(hours=1)
-
-     add_event(title, start, end)
-
-     speak(f"{title} has been added to your calendar.")
-    elif "today schedule" in command.lower() or "today's schedule" in command.lower():
-
-     events = get_today_events()
-
-     if not events:
-        speak("You have no events scheduled for today.")
-        return
-
-     speak(f"You have {len(events)} event{'s' if len(events) > 1 else ''} today.")
-
-     for event in events:
-        summary = event.get("summary", "Untitled Event")
-
-        start = event["start"].get("dateTime", event["start"].get("date"))
-
-        try:
-            dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
-            time_str = dt.strftime("%I:%M %p")
-            speak(f"{summary} at {time_str}")
-        except Exception:
-            speak(summary)
-    elif "write an email" in command:
-        
-        speak("What should I write?")
-
-        prompt = takeCommand()
-
-        if not prompt:
-            speak("I didn't catch that.")
-            return
-
-        email_client = GeminiEmail()
-
-        email_draft = email_client.draft(prompt)
-
-        email_mode = True
-
-        # Show in GUI
-        show_email(email_draft)
-
-        speak("I've drafted the email.")
-        speak("Would you like to edit, save or send it?")
-        return
-    if "news" in command:
-        speak("Fetching news for you")
-        try:
-            response = requests.get(
-                f"https://newsapi.org/v2/top-headlines?country=us&apiKey={API_KEY}"
-            )
-            news = response.json()
-            articles = news.get("articles", [])
-            if not articles:
-                speak("No news found")
-                return
-            for article in articles[:5]:
-                title = article.get("title")
-                if title:
-                    print(title)
-                    speak(title)
-            if "totalResults" in news and news["totalResults"] == 0:
-                speak("No news found")
-        except Exception as e:
-            print("News error:", e)
-            speak("I could not fetch news.")
-        return
-
-    output = aicommand(command)
-    print(output)
-    speak(output)
-app_index = {}
-
-start_menu_paths = [
-    os.path.join(os.environ["APPDATA"],
-                 r"Microsoft\Windows\Start Menu\Programs"),
-
-    os.path.join(os.environ["PROGRAMDATA"],
-                 r"Microsoft\Windows\Start Menu\Programs")
-]
-
-for start_menu in start_menu_paths:
-    for root, dirs, files in os.walk(start_menu):
-        for file in files:
-            if file.endswith(".lnk"):
-                app_name = os.path.splitext(file)[0].lower()
-                app_index[app_name] = os.path.join(root, file)
-
-print(f"Loaded {len(app_index)} applications.")
-
-def open_app(command):
-    command = command.lower().strip()
-
-    # Remove the opening keyword
-    for word in ["open", "launch", "start", "run"]:
-        if command.startswith(word):
-            command = command.replace(word, "", 1).strip()
-            break
+    command = command.strip()
 
     if not command:
-        return "Please tell me which app to open."
+        return
 
-    # Exact match
-    if command in app_index:
-        os.startfile(app_index[command])
-        return f"Opening {command}"
+    # Translate first
+    command = translate_to_english(command)
 
-    # Partial match
-    for app_name, shortcut in app_index.items():
-        if command in app_name:
-            os.startfile(shortcut)
-            return f"Opening {app_name}"
+    if not isinstance(command, str):
+        print("Translation returned invalid command:", command)
+        return
 
-    return "Sorry, I couldn't find that application."
-from app_louncher import open_app
-from system_commands import system_command
-
-def handle_windows_commands(command):
     command = command.lower().strip()
 
-    # Handle system commands first
-    if system_command(command):
-        speak("Done.")
-        return True
+    print(f"[COMMAND] {command}")
 
-    # Handle app launching
-    if open_app(command):
-        speak("Opening application.")
-        return True
+    # ============================================================
+    # 2. IGNORE WAKE WORD
+    # ============================================================
 
-    return False
+    if command in (
+        "jarvis",
+        "hey jarvis",
+        "ok jarvis",
+        "okay jarvis"
+    ):
+        return
+
+    # ============================================================
+    # 3. WRITING MODE
+    # MUST COME BEFORE GENERIC OPEN/START COMMANDS
+    # ============================================================
+
+    writing_commands = (
+        "writing mode",
+        "open writing mode",
+        "start writing mode",
+        "launch writing mode",
+        "open writer",
+        "start writer",
+        "launch writer",
+        "writing workspace",
+        "open writing workspace"
+    )
+
+    if any(
+        phrase == command or
+        command.startswith(phrase + " ")
+        for phrase in writing_commands
+    ):
+
+        print("[JARVIS] Opening Writing Mode...")
+
+        try:
+            open_writing_mode()
+        except Exception as e:
+            print("[Writing Mode Error]", e)
+            traceback.print_exc()
+            speak("I couldn't open writing mode.")
+
+        return
+
+    # ============================================================
+    # 4. CLOSE CONVERSATION MODE
+    # FIXED BOOLEAN LOGIC
+    # ============================================================
+
+    close_conversation_commands = (
+        "close conversation mode",
+        "stop conversation mode",
+        "exit conversation mode",
+        "deactivate conversation mode",
+        "stop the chat",
+        "end the chat",
+        "close the chat",
+        "stop chatting"
+    )
+
+    if any(
+        phrase == command or
+        command.startswith(phrase + " ")
+        for phrase in close_conversation_commands
+    ):
+
+        try:
+            conversation_mode.deactivate()
+            speak("Conversation mode closed.")
+        except Exception as e:
+            print("[Conversation Mode Error]", e)
+
+        return
+
+    # ============================================================
+    # 5. START CONVERSATION MODE
+    # ============================================================
+
+    conversation_commands = (
+        "start conversation mode",
+        "open conversation mode",
+        "launch conversation mode",
+        "activate conversation mode",
+        "start a conversation",
+        "let's start a conversation",
+        "lets start a conversation",
+        "let's chat",
+        "lets chat",
+        "start chatting",
+        "talk with me"
+    )
+
+    if any(
+        phrase == command or
+        command.startswith(phrase + " ")
+        for phrase in conversation_commands
+    ):
+
+        try:
+            conversation_mode.start()
+            speak("Conversation mode activated.")
+        except Exception as e:
+            print("[Conversation Mode Error]", e)
+            speak("I couldn't start conversation mode.")
+
+        return
+
+    # ============================================================
+    # 6. REMINDERS
+    # BEFORE GENERIC CREATE/ADD COMMANDS
+    # ============================================================
+
+    if command.startswith("remind me"):
+
+        try:
+
+            create_reminder(command)
+
+            speak(
+                "Reminder added successfully."
+            )
+
+        except Exception as e:
+
+            print(
+                "[Reminder Error]",
+                e
+            )
+
+            speak(
+                "Sorry, I couldn't add the reminder."
+            )
+
+        return
+
+    # ============================================================
+    # 7. TODAY'S SCHEDULE
+    # BEFORE GENERIC CALENDAR COMMANDS
+    # ============================================================
+
+    if (
+        command == "today schedule"
+        or
+        command == "today's schedule"
+        or
+        command == "show today's schedule"
+        or
+        command == "show today schedule"
+        or
+        command == "what is my schedule today"
+        or
+        command == "what's my schedule today"
+    ):
+
+        try:
+
+            events = get_today_events()
+
+            if not events:
+
+                speak(
+                    "You have no events scheduled for today."
+                )
+
+                return
+
+            speak(
+                f"You have {len(events)} "
+                f"event{'s' if len(events) != 1 else ''} today."
+            )
+
+            for event in events:
+
+                summary = event.get(
+                    "summary",
+                    "Untitled Event"
+                )
+
+                start = event[
+                    "start"
+                ].get(
+                    "dateTime",
+                    event["start"].get("date")
+                )
+
+                try:
+
+                    dt = datetime.fromisoformat(
+                        start.replace(
+                            "Z",
+                            "+00:00"
+                        )
+                    )
+
+                    time_str = dt.strftime(
+                        "%I:%M %p"
+                    )
+
+                    speak(
+                        f"{summary} at {time_str}"
+                    )
+
+                except Exception:
+
+                    speak(summary)
+
+        except Exception as e:
+
+            print(
+                "[Calendar Error]",
+                e
+            )
+
+            speak(
+                "I couldn't read today's schedule."
+            )
+
+        return
+
+    # ============================================================
+    # 8. CALENDAR / SCHEDULE
+    # ============================================================
+
+    if command.startswith(
+        (
+            "schedule ",
+            "add event ",
+            "create event ",
+            "schedule an event ",
+            "add a calendar event ",
+            "create a calendar event "
+        )
+    ):
+
+        try:
+
+            title, start = parse_calendar_command(
+                command
+            )
+
+            if start is None:
+
+                speak(
+                    "Sorry, I could not understand the date and time."
+                )
+
+                return
+
+            if not title:
+
+                title = "Untitled Event"
+
+            end = start + timedelta(
+                hours=1
+            )
+
+            add_event(
+                title,
+                start,
+                end
+            )
+
+            speak(
+                f"{title} has been added to your calendar."
+            )
+
+        except Exception as e:
+
+            print(
+                "[Calendar Error]",
+                e
+            )
+
+            speak(
+                "Sorry, I couldn't create that calendar event."
+            )
+
+        return
+
+    # ============================================================
+    # 9. WIKIPEDIA
+    # ============================================================
+
+    if command.startswith(
+        "search wikipedia"
+    ):
+
+        query = command[
+            len("search wikipedia"):
+        ].strip()
+
+        if not query:
+
+            speak(
+                "What would you like me to search on Wikipedia?"
+            )
+
+            return
+
+        speak(
+            f"Searching Wikipedia for {query}"
+        )
+
+        url = (
+            "https://en.wikipedia.org/wiki/"
+            "Special:Search?search="
+            + urllib.parse.quote(query)
+        )
+
+        webbrowser.open(url)
+
+        return
+
+    # ============================================================
+    # 10. YOUTUBE SEARCH
+    # ============================================================
+
+    if command.startswith(
+        "search youtube"
+    ):
+
+        query = command[
+            len("search youtube"):
+        ].strip()
+
+        if not query:
+
+            speak(
+                "What would you like me to search on YouTube?"
+            )
+
+            return
+
+        speak(
+            f"Searching YouTube for {query}"
+        )
+
+        url = (
+            "https://www.youtube.com/results"
+            "?search_query="
+            + urllib.parse.quote(query)
+        )
+
+        webbrowser.open(url)
+
+        return
+
+    # ============================================================
+    # 11. GENERAL WEB SEARCH
+    # ============================================================
+
+    if command.startswith(
+        "search "
+    ):
+
+        query = command[
+            len("search "):
+        ].strip()
+
+        if not query:
+
+            speak(
+                "What would you like me to search?"
+            )
+
+            return
+
+        speak(
+            f"Searching for {query}"
+        )
+
+        try:
+
+            search_web(query)
+
+        except Exception as e:
+
+            print(
+                "[Search Error]",
+                e
+            )
+
+            speak(
+                "Sorry, I couldn't perform the search."
+            )
+
+        return
+
+    # ============================================================
+    # 12. PLAY MUSIC
+    # ============================================================
+
+    if command.startswith(
+        "play "
+    ):
+
+        song = command[
+            len("play "):
+        ].strip()
+
+        if not song:
+
+            speak(
+                "What song would you like me to play?"
+            )
+
+            return
+
+        speak(
+            f"Playing {song} on YouTube."
+        )
+
+        try:
+
+            play_song(song)
+
+        except Exception as e:
+
+            print(
+                "[Music Error]",
+                e
+            )
+
+            speak(
+                "Sorry, I couldn't play that."
+            )
+
+        return
+
+    # ============================================================
+    # 13. GOOGLE
+    # ============================================================
+
+    if command in (
+        "google",
+        "open google",
+        "launch google",
+        "start google"
+    ):
+
+        speak(
+            "Opening Google."
+        )
+
+        webbrowser.open(
+            "https://www.google.com"
+        )
+
+        return
+
+    # ============================================================
+    # 14. GENERIC OPEN / LAUNCH / START / RUN
+    #
+    # This comes AFTER all special commands.
+    # ============================================================
+
+    open_prefixes = (
+        "open ",
+        "launch ",
+        "start ",
+        "run "
+    )
+
+    matched_prefix = None
+
+    for prefix in open_prefixes:
+
+        if command.startswith(prefix):
+
+            matched_prefix = prefix
+            break
+
+    if matched_prefix:
+
+        target = command[
+            len(matched_prefix):
+        ].strip()
+
+        if not target:
+
+            speak(
+                "What would you like me to open?"
+            )
+
+            return
+
+        print(
+            f"[OPEN] Target: {target}"
+        )
+
+        # --------------------------------------------------------
+        # 14A. COMMON WEBSITES
+        # --------------------------------------------------------
+
+        websites = {
+
+            "youtube":
+                "https://youtube.com",
+
+            "google":
+                "https://google.com",
+
+            "gmail":
+                "https://mail.google.com",
+
+            "github":
+                "https://github.com",
+
+            "chatgpt":
+                "https://chat.openai.com",
+
+            "facebook":
+                "https://facebook.com",
+
+            "instagram":
+                "https://instagram.com",
+
+            "linkedin":
+                "https://linkedin.com",
+
+            "spotify":
+                "https://spotify.com",
+
+            "whatsapp":
+                "https://web.whatsapp.com",
+
+            "amazon":
+                "https://amazon.in",
+
+            "netflix":
+                "https://netflix.com"
+        }
+
+        if target in websites:
+
+            speak(
+                f"Opening {target}."
+            )
+
+            webbrowser.open(
+                websites[target]
+            )
+
+            return
+
+        # --------------------------------------------------------
+        # 14B. FILE / FOLDER
+        # --------------------------------------------------------
+
+        if os.path.exists(target):
+
+            try:
+
+                os.startfile(target)
+
+                speak(
+                    f"Opening {os.path.basename(target)}."
+                )
+
+                return
+
+            except Exception as e:
+
+                print(
+                    "[File Open Error]",
+                    e
+                )
+
+        # --------------------------------------------------------
+        # 14C. INSTALLED APPLICATION
+        # --------------------------------------------------------
+
+        try:
+
+            if open_app(target):
+
+                return
+
+        except Exception as e:
+
+            print(
+                "[App Open Error]",
+                e
+            )
+
+        # --------------------------------------------------------
+        # 14D. DIRECT WEBSITE
+        # --------------------------------------------------------
+
+        if (
+            "." in target
+            and " " not in target
+        ):
+
+            url = target
+
+            if not url.startswith(
+                (
+                    "http://",
+                    "https://"
+                )
+            ):
+
+                url = (
+                    "https://"
+                    + url
+                )
+
+            speak(
+                "Opening website."
+            )
+
+            webbrowser.open(url)
+
+            return
+
+        # --------------------------------------------------------
+        # 14E. EVERYTHING SEARCH
+        # --------------------------------------------------------
+
+        try:
+
+            result = subprocess.check_output(
+                [
+                    ES_PATH,
+                    target
+                ],
+                text=True,
+                encoding="utf-8",
+                errors="ignore"
+            )
+
+            matches = [
+                line.strip()
+                for line in result.splitlines()
+                if line.strip()
+            ]
+
+            if matches:
+
+                os.startfile(
+                    matches[0]
+                )
+
+                speak(
+                    f"Opening {target}."
+                )
+
+                return
+
+        except Exception as e:
+
+            print(
+                "[Everything Search Error]",
+                e
+            )
+
+        # --------------------------------------------------------
+        # 14F. NOTHING FOUND
+        # --------------------------------------------------------
+
+        speak(
+            f"I couldn't find {target}."
+        )
+
+        return
+    #-------------------------------------------------------------
+    #16. SYSTEM COMMANDS
+    #-------------------------------------------------------------  
+    if "shutdown" in command or "restart" in command or "turn off" in command:
+
+        if handle_power_commands(command):
+            return
+   
+
+    # ============================================================
+    # 15. DEFAULT AI
+    # ============================================================
+
+    try:
+
+        output = aicommand(
+            command
+        )
+
+        if output:
+
+            print(output)
+
+            speak(output)
+
+        else:
+
+            speak(
+                "I didn't receive a response."
+            )
+
+    except Exception as e:
+
+        print(
+            "[AI Command Error]",
+            e
+        )
+
+        speak(
+            "Sorry, I couldn't process that request."
+        )
+
+    return
 def voice_loop():
+
+    global conversation_mode
+
+    print("[VOICE] Voice loop started.")
 
     while True:
 
         try:
 
-            print("Listening for wake word...")
-
-            word = listen(timeout=5, phrase_time_limit=5)
-
-            if word is None:
+            # Conversation mode handles its own listening
+            if conversation_mode is not None and conversation_mode.active:
+                time.sleep(0.1)
                 continue
 
-            if "jarvis" in word:
+            print("Listening for wake word...")
 
-                speak("Yes sir")
+            word = listen(
+                timeout=5,
+                phrase_time_limit=5
+            )
 
-                print("Waiting for command...")
+            if not word:
+                continue
 
-                command = listen(timeout=8, phrase_time_limit=8)
+            word = word.lower().strip()
 
-                if command is None:
-                    speak("I didn't catch that.")
-                    continue
+            print(f"[WAKE LISTEN] {word}")
 
-                print("Command:", command)
+            if "jarvis" not in word:
+                continue
 
-                processcommand(command)
+            speak("Yes sir")
+
+            print("Waiting for command...")
+
+            command = listen(
+                timeout=8,
+                phrase_time_limit=8
+            )
+
+            if not command:
+                speak("I didn't catch that.")
+                continue
+
+            command = command.lower().strip()
+
+            print(f"[COMMAND] {command}")
+
+            processcommand(command)
+
+        except sr.WaitTimeoutError:
+
+            print("[VOICE] Listening timeout.")
+            continue
+
+        except sr.UnknownValueError:
+
+            print("[VOICE] Could not understand audio.")
+            continue
+
+        except sr.RequestError as e:
+
+            print("[VOICE] Speech recognition service error:", e)
+            time.sleep(2)
 
         except Exception as e:
 
-            print("Voice Loop Error:", e)
-
+            print("[VOICE LOOP ERROR]", e)
+            traceback.print_exc()
             time.sleep(2)
-
 def listen_for_command():
     try:
         command = listen(
@@ -753,19 +1458,14 @@ def listen_for_command():
         print("Voice Loop Error:", e)
         traceback.print_exc()
         time.sleep(2)
-
 if __name__ == "__main__":
+
     speak("Initializing Jarvis")
 
-    threading.Thread(
-        target=voice_loop,
-        daemon=True
-    ).start()
-
     try:
-        gui()
+        voice_loop()
+
     except Exception as e:
         print(f"Fatal Error: {e}")
         logging.error(traceback.format_exc())
-
         input("Press Enter to exit...")

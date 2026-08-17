@@ -6,6 +6,9 @@ from dotenv import load_dotenv
 import pyttsx3
 from logger import log_error
 import threading
+import edge_tts
+import asyncio
+import tempfile
 
 speaking = False
 stop_requested = False
@@ -78,7 +81,8 @@ def offline_speak(text):
     except Exception as e:
         log_error("Offline TTS", e)
 def speak(text):
-    
+    global speaking, stop_requested
+
     print(">>> speak() called")
     print("Text:", text)
 
@@ -91,62 +95,30 @@ def speak(text):
     ]:
         save_message("assistant", text)
 
-    if not ELEVEN_API_KEY:
-        offline_speak(text)
-        return
-
-    if not VOICE_ID:
-        offline_speak(text)
-        return
-
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}"
-
-    headers = {
-        "xi-api-key": ELEVEN_API_KEY,
-        "Content-Type": "application/json",
-        "Accept": "audio/mpeg"
-    }
-
-    data = {
-        "text": text,
-        "model_id": "eleven_multilingual_v2"
-    }
-
     try:
-        response = requests.post(
-            url,
-            headers=headers,
-            json=data,
-            timeout=10
-        )
+        temp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+        filename = temp.name
+        temp.close()
 
-        print("Status Code:", response.status_code)
-        print("Content-Type:", response.headers.get("Content-Type"))
+        async def generate():
+            communicate = edge_tts.Communicate(
+                text=text,
+                voice="en-US-GuyNeural"   # Change voice here
+            )
+            await communicate.save(filename)
 
-        if response.status_code != 200:
-         log_error("ElevenLabs API", Exception(response.text))
-         offline_speak(text)
-         return
-
-        filename = f"speech_{int(time.time()*1000)}.mp3"
-
-        with open(filename, "wb") as f:
-            f.write(response.content)
+        asyncio.run(generate())
 
         threading.Thread(
-        target=play_audio,
-        args=(filename,),
-        daemon=True
+            target=play_audio,
+            args=(filename,),
+            daemon=True
         ).start()
-        print("Speak finished")
+    
 
-        try:
-            os.remove(filename)
-        except Exception:
-            pass
 
     except Exception as e:
-        log_error("ElevenLabs", e)
+        log_error("Edge TTS", e)
         offline_speak(text)
 def stop_speaking():
     global speaking, stop_requested

@@ -1,8 +1,34 @@
 import os
 import subprocess
+from anyio import Path
 from httpx import delete
 
 from speak import speak
+def create_file(filename, folder="."):
+    path = Path(folder) / filename
+
+    if path.exists():
+        return f"{filename} already exists."
+
+    path.touch()
+    return f"{filename} has been created."
+def delete_file(filename, folder="."):
+    path = Path(folder) / filename
+
+    if path.exists():
+        path.unlink()
+        return f"{filename} deleted successfully."
+
+    return "File not found."
+def rename_file(old_name, new_name, folder="."):
+    old_path = Path(folder) / old_name
+    new_path = Path(folder) / new_name
+
+    if not old_path.exists():
+        return "File not found."
+
+    old_path.rename(new_path)
+    return f"Renamed to {new_name}."
 def system_command(command):
     command = command.lower().strip()
 
@@ -80,4 +106,23 @@ def system_command(command):
         speak("All running applications have been closed.")
         return True
 
-    
+    elif "create file" in command:
+        filename = command.split("create file", 1)[1].strip()
+        result = create_file(filename)
+        speak(result)
+        return True
+    elif "delete file" in command:
+        filename = command.split("delete file", 1)[1].strip()
+        result = delete_file(filename)
+        speak(result)
+        return True
+    elif "rename file" in command:
+        parts = command.split("rename file", 1)[1].strip().split(" to ")
+        if len(parts) == 2:
+            old_name, new_name = parts[0].strip(), parts[1].strip()
+            result = rename_file(old_name, new_name)
+            speak(result)
+            return True
+        else:
+            speak("Please specify the old and new file names.")
+            return False
