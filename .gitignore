@@ -1,0 +1,43 @@
+# ===== SECRETS =====
+.env
+.env.*
+!.env.example
+credentials.json
+token.json
+
+# ===== PYTHON =====
+.venv/
+.venv-1/
+__pycache__/
+*.pyc
+
+# ===== BUILD OUTPUT =====
+build/
+dist/
+release/
+
+# ===== USER DATA =====
+*.db
+*.sqlite
+*.sqlite3
+
+# ===== LOGS =====
+logs/
+*.log
+
+# ===== AUDIO =====
+*.mp3
+*.wav
+
+# ===== IDE =====
+.vscode/
+
+# ===== TEMP =====
+*.tmp
+*.temp
+
+# ===== INSTALLER OUTPUT =====
+installer/output/
+
+# ===== INSTALLER OUTPUT =====
+installer/output/
