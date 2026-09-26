@@ -1,6 +1,6 @@
+﻿
 
 
-from google import genai
 import speech_recognition as sr
 import pyttsx3
 import webbrowser
@@ -547,19 +547,20 @@ def start_tk_system():
     tk_root.mainloop()
 def aicommand(command):
     if not internet_available():
-     return "You're offline. Please check your internet connection."
+        return "You're offline. Please check your internet connection."
 
     if command.lower().strip() == "jarvis":
         return ""
+
     save_message("user", command)
 
     try:
-        client = genai.Client(api_key=GEMINI_API_KEY)
-
+        # Get recent conversation history
         history = get_recent_messages(20)
+
         print("\n===== HISTORY =====")
         for role, msg in history:
-          print(role, ":", msg)
+            print(role, ":", msg)
         print("===================\n")
 
         conversation = ""
@@ -567,14 +568,19 @@ def aicommand(command):
         for role, msg in history:
             conversation += f"{role}: {msg}\n"
 
+        # Send the request through the central AI provider router.
+        # Provider order:
+        # Gemini -> Mistral -> Cloudflare
+        from ai_router import ask_ai
+
         prompt = f"""
 You are Jarvis, a helpful AI voice assistant made by Ranabir Bhattacharjee.
 
 You have access to conversation history below.
 Treat this history as your memory.
-about the
-If the user previously told you a fact  or you underastand how he is,
-you should remember and use it and constantly understand your user and generate helpful responses especially when the user asks for personalized assistance.
+
+If the user previously told you a fact or you understand how he is,
+use that context when relevant and generate helpful personalized responses.
 
 Never say:
 "I don't have memory"
@@ -591,35 +597,37 @@ Answer using the conversation history when relevant.
 Give concise and useful answers.
 """
 
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt
+        reply = ask_ai(
+            prompt,
+            conversation_context=""
         )
-
-        reply = response.text
-
-       
 
         return reply
 
     except Exception as e:
-     log_error("Gemini", e)
+        log_error("AI Router", e)
 
-     error_text = str(e)
+        error_text = str(e)
 
-     if "429" in error_text or "RESOURCE_EXHAUSTED" in error_text:
-        return "I've reached my AI usage limit. Please try again in a minute."
+        print("[AI ROUTER ERROR]", error_text)
 
-     elif "401" in error_text:
-        return "My AI API key is invalid."
+        if "429" in error_text or "RESOURCE_EXHAUSTED" in error_text:
+            return "I've reached my AI usage limit. Please try again in a minute."
 
-     elif "403" in error_text:
-        return "My AI service denied access."
+        elif "401" in error_text:
+            return "My AI API key is invalid."
 
-     else:
-        return "I couldn't contact my AI service."
+        elif "403" in error_text:
+            return "My AI service denied access."
+
+        else:
+            return "I couldn't contact my AI service."
+
+
 def play_song(song):
     pywhatkit.playonyt(song)
+
+
 writing_window = None
 
 
