@@ -22,15 +22,21 @@ from google import genai
 load_dotenv()
 
 API_KEY = os.getenv("GEMINI_API_KEY")
+client = None
 
-if not API_KEY:
-    raise ValueError(
-        "GEMINI_API_KEY was not found in your .env file.\n\n"
-        "Add this to your .env file:\n\n"
-        "GEMINI_API_KEY=your_api_key_here"
-    )
 
-client = genai.Client(api_key=API_KEY)
+def _get_client():
+    global client
+
+    if client is None:
+        if not API_KEY:
+            raise RuntimeError(
+                "GEMINI_API_KEY is not configured. "
+                "Add it to your environment before using writing mode."
+            )
+        client = genai.Client(api_key=API_KEY)
+
+    return client
 
 MODEL = "gemini-2.5-flash"
 
@@ -130,7 +136,7 @@ CONVERSATION:
 Respond to the user's latest message.
 """
 
-    response = client.models.generate_content(
+    response = _get_client().models.generate_content(
         model=MODEL,
         contents=prompt
     )
