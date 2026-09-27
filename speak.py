@@ -10,8 +10,11 @@ import edge_tts
 import asyncio
 import tempfile
 
+from config import DATA_DIR
+
 speaking = False
 stop_requested = False
+engine = None
 # -----------------------------
 # Initialize Pygame Mixer
 # -----------------------------
@@ -28,14 +31,8 @@ except Exception as e:
 # -----------------------------
 load_dotenv()
 
-print("Current folder:", os.getcwd())
-print(".env exists:", os.path.exists(".env"))
-
 ELEVEN_API_KEY = os.getenv("ELEVEN_API_KEY")
 VOICE_ID = os.getenv("VOICE_ID")
-
-print("API Key Loaded:", ELEVEN_API_KEY is not None)
-print("Voice ID:", VOICE_ID)
 
 
 # -----------------------------
@@ -43,7 +40,7 @@ print("Voice ID:", VOICE_ID)
 # -----------------------------
 def save_message(sender, text):
     try:
-        with open("messages.log", "a", encoding="utf-8") as file:
+        with open(DATA_DIR / "messages.log", "a", encoding="utf-8") as file:
             file.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - {sender}: {text}\n")
     except Exception:
         pass
@@ -53,8 +50,13 @@ def play_audio(filename):
     speaking = True
     stop_requested = False
 
-    pygame.mixer.music.load(filename)
-    pygame.mixer.music.play()
+    try:
+        pygame.mixer.music.load(filename)
+        pygame.mixer.music.play()
+    except Exception as error:
+        log_error("Audio playback", error)
+        speaking = False
+        return
 
     while pygame.mixer.music.get_busy():
 
@@ -125,7 +127,10 @@ def stop_speaking():
 
     if speaking:
         stop_requested = True
-        pygame.mixer.music.stop()
+        try:
+            pygame.mixer.music.stop()
+        except Exception:
+            pass
         speaking = False
 
 
