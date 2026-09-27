@@ -1,9 +1,11 @@
 import os
 import subprocess
-from anyio import Path
-from httpx import delete
+from pathlib import Path
+import platform
 
 from speak import speak
+
+
 def create_file(filename, folder="."):
     path = Path(folder) / filename
 
@@ -31,6 +33,28 @@ def rename_file(old_name, new_name, folder="."):
     return f"Renamed to {new_name}."
 def system_command(command):
     command = command.lower().strip()
+
+    if platform.system() != "Windows" and any(
+        phrase in command
+        for phrase in (
+            "shutdown",
+            "turn off computer",
+            "restart",
+            "reboot",
+            "sleep",
+            "hibernate",
+            "lock",
+            "logout",
+            "log out",
+            "sign out",
+            "refresh",
+            "reload",
+            "close all applications",
+            "close all apps",
+        )
+    ):
+        speak("That system command is only available on Windows.")
+        return False
 
     # Shutdown
     if "shutdown" in command or "turn off computer" in command:
@@ -80,6 +104,12 @@ def system_command(command):
         prefetch_path = os.path.join(os.environ.get("SystemRoot", ""), "Prefetch")
         return True if os.path.exists(prefetch_path) and os.system(f"del /q /f /s {prefetch_path}\\*") == 0 else False
     
+    elif "delete file" in command:
+        filename = command.split("delete file", 1)[1].strip()
+        result = delete_file(filename)
+        speak(result)
+        return True
+
     elif "delete" in command or "uninstall" in command:
         global waiting_for_confirmation, pending_action, pending_app
         
@@ -109,11 +139,6 @@ def system_command(command):
     elif "create file" in command:
         filename = command.split("create file", 1)[1].strip()
         result = create_file(filename)
-        speak(result)
-        return True
-    elif "delete file" in command:
-        filename = command.split("delete file", 1)[1].strip()
-        result = delete_file(filename)
         speak(result)
         return True
     elif "rename file" in command:
