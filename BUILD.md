@@ -6,7 +6,7 @@ chain.
 
 ## Windows
 
-1. Install Python 3.11 or newer and Inno Setup.
+1. Install Python 3.12 and Inno Setup.
 2. Copy `.env.example` to `%USERPROFILE%\.jarvis\.env`.
 3. Add at least one AI provider key to that file.
 4. Run `build_windows.ps1` in PowerShell.
@@ -14,7 +14,7 @@ chain.
 
 ## macOS
 
-1. Install Python 3.11 or newer and PortAudio (`brew install portaudio`).
+1. Install Python 3.12 and PortAudio (`brew install portaudio`).
 2. Copy `.env.example` to `~/.jarvis/.env`.
 3. Add at least one AI provider key.
 4. Run `./build_macos.sh`.
