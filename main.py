@@ -9,6 +9,7 @@ import traceback
 import logging
 import email
 import shutil
+import sys
 from datetime import datetime, timedelta
 import  pywhatkit
 import urllib
@@ -60,7 +61,10 @@ def find_es_path():
 ES_PATH = find_es_path()
 from tkinter import StringVar
 import threading
-import winshell
+try:
+    import winshell
+except ImportError:
+    winshell = None
 from abc import ABC, abstractmethod
 from deep_translator import GoogleTranslator
 from app_louncher import open_app
@@ -73,8 +77,18 @@ from calendar_manager import add_event
 from logger import log_info, log_warning, log_error
 from speak import stop_speaking
 from audio.microphone import listen
-from config import GEMINI_API_KEY
+from config import DB_FILE, GEMINI_API_KEY
 from conversation_mode import start_conversational
+
+
+def open_path(path):
+    """Open a file or folder with the user's native application."""
+    if hasattr(os, "startfile"):
+        os.startfile(path)
+        return
+
+    opener = "open" if sys.platform == "darwin" else "xdg-open"
+    subprocess.Popen([opener, path])
 
 pending_files = []
 
@@ -200,7 +214,7 @@ processing = False
 
 import sqlite3
 
-conn = sqlite3.connect("jarvis_memory.db")
+conn = sqlite3.connect(DB_FILE)
 cursor = conn.cursor()
 
 cursor.execute("""
@@ -212,7 +226,7 @@ CREATE TABLE IF NOT EXISTS chat_history (
 """)
 
 def get_recent_messages(limit=20):
-    conn = sqlite3.connect("jarvis_memory.db")
+    conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -231,7 +245,7 @@ def get_recent_messages(limit=20):
 
 
  
-def __init__(self, db_name="jarvis_memory.db", poll_interval=30):
+def __init__(self, db_name=str(DB_FILE), poll_interval=30):
         self.db_name = db_name
         self.poll_interval = poll_interval
         self.initialize_database()
@@ -322,7 +336,7 @@ def translate_to_english(text):
 from speak import speak
 
 def save_message(role, message):
-    conn = sqlite3.connect("jarvis_memory.db")
+    conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
 
     cursor.execute(
@@ -1216,7 +1230,7 @@ def processcommand(command):
 
             try:
 
-                os.startfile(target)
+                open_path(target)
 
                 speak(
                     f"Opening {os.path.basename(target)}."
@@ -1303,7 +1317,7 @@ def processcommand(command):
 
             if matches:
 
-                os.startfile(
+                open_path(
                     matches[0]
                 )
 
