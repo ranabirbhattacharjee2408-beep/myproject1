@@ -39,5 +39,5 @@ logs/
 # ===== INSTALLER OUTPUT =====
 installer/output/
 
-# ===== INSTALLER OUTPUT =====
-installer/output/
+# ===== LOCAL BUILD METADATA =====
+*.spec.bak
