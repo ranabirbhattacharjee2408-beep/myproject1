@@ -1,10 +1,31 @@
+import os
+
 import speech_recognition as sr
 
-# Create ONE recognizer
-recognizer = sr.Recognizer()
 
-# Create ONE microphone
-microphone = sr.Microphone(device_index=1)
+recognizer = sr.Recognizer()
+microphone = None
+
+
+def _get_microphone():
+    global microphone
+
+    if microphone is not None:
+        return microphone
+
+    try:
+        configured_index = os.getenv("JARVIS_MICROPHONE_INDEX")
+        device_index = (
+            int(configured_index)
+            if configured_index and configured_index.strip()
+            else None
+        )
+        microphone = sr.Microphone(device_index=device_index)
+    except Exception as error:
+        print(f"Microphone unavailable: {error}")
+        microphone = False
+
+    return microphone
 
 
 def listen(timeout=5, phrase_time_limit=5):
@@ -14,7 +35,11 @@ def listen(timeout=5, phrase_time_limit=5):
     """
 
     try:
-        with microphone as source:
+        source_microphone = _get_microphone()
+        if not source_microphone:
+            return None
+
+        with source_microphone as source:
 
             recognizer.adjust_for_ambient_noise(source, duration=0.3)
 
