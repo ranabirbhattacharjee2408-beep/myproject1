@@ -1,6 +1,7 @@
 ﻿# -*- mode: python ; coding: utf-8 -*-
 
 from pathlib import Path
+import sys
 
 from PyInstaller.utils.hooks import collect_submodules
 
@@ -10,6 +11,7 @@ hiddenimports = (
     collect_submodules("google.genai")
     + collect_submodules("mistralai")
 )
+icon = str(ROOT / "JARVIS.ico") if sys.platform == "win32" else None
 
 a = Analysis(
     ["main.py"],
@@ -55,7 +57,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=str(ROOT / "JARVIS.ico"),
+    icon=icon,
 )
 
 coll = COLLECT(
