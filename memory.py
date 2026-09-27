@@ -1,6 +1,9 @@
 import sqlite3
 
-DB_NAME = "jarvis_memory.db"
+from config import DB_FILE
+
+
+DB_NAME = str(DB_FILE)
 
 def get_recent_messages(limit=10):
     conn = sqlite3.connect(DB_NAME)
