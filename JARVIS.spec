@@ -1,25 +1,38 @@
 ﻿# -*- mode: python ; coding: utf-8 -*-
 
+from pathlib import Path
+
 from PyInstaller.utils.hooks import collect_submodules
 
-hiddenimports = []
-hiddenimports += collect_submodules("google.genai")
-hiddenimports += collect_submodules("mistralai")
+
+ROOT = Path(SPECPATH)
+hiddenimports = (
+    collect_submodules("google.genai")
+    + collect_submodules("mistralai")
+)
 
 a = Analysis(
-    ['main.py'],
-    pathex=[r'D:\JARVIS'],
+    ["main.py"],
+    pathex=[str(ROOT)],
     binaries=[],
     datas=[
-        (r'D:\JARVIS\dist\JARVIS_Bot.exe', '.'),
-        (r'D:\JARVIS\bot.png', '.'),
-        (r'D:\JARVIS\bot_assets', 'bot_assets'),
+        (str(ROOT / "bot.png"), "."),
+        (str(ROOT / "bot_assets"), "bot_assets"),
     ],
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        "client",
+        "cloudflare_test",
+        "gemini_test",
+        "ollama_ai",
+        "test",
+        "test_calendar",
+        "test_logger",
+        "test_mistral",
+    ],
     noarchive=False,
     optimize=0,
 )
@@ -31,18 +44,18 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='JARVIS',
+    name="JARVIS",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=r'D:\JARVIS\JARVIS.ico',
+    icon=str(ROOT / "JARVIS.ico"),
 )
 
 coll = COLLECT(
@@ -52,5 +65,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='JARVIS',
+    name="JARVIS",
 )
