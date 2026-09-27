@@ -5,6 +5,7 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+from config import GOOGLE_CREDENTIALS_FILE, GOOGLE_TOKEN_FILE
 
 # If you change these scopes, delete token.json
 SCOPES = ['https://www.googleapis.com/auth/calendar']
@@ -13,8 +14,11 @@ def get_calendar_service():
     creds = None
 
     # Load saved login
-    if os.path.exists("token.json"):
-        creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+    if GOOGLE_TOKEN_FILE.exists():
+        creds = Credentials.from_authorized_user_file(
+            str(GOOGLE_TOKEN_FILE),
+            SCOPES,
+        )
 
     # Login first time
     if not creds or not creds.valid:
@@ -23,14 +27,20 @@ def get_calendar_service():
             creds.refresh(Request())
 
         else:
+            if not GOOGLE_CREDENTIALS_FILE.exists():
+                raise FileNotFoundError(
+                    "Google Calendar is not configured. Put your OAuth client "
+                    f"file at {GOOGLE_CREDENTIALS_FILE}."
+                )
+
             flow = InstalledAppFlow.from_client_secrets_file(
-                "credentials.json",
+                str(GOOGLE_CREDENTIALS_FILE),
                 SCOPES
             )
 
             creds = flow.run_local_server(port=0)
 
-        with open("token.json", "w") as token:
+        with open(GOOGLE_TOKEN_FILE, "w") as token:
             token.write(creds.to_json())
 
     return build("calendar", "v3", credentials=creds)
