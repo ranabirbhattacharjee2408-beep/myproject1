@@ -3,9 +3,10 @@ import threading
 import time
 from datetime import datetime
 
+from config import DB_FILE
 from speak import speak
 
-DB_NAME = "jarvis_memory.db"
+DB_NAME = str(DB_FILE)
 
 
 # ==========================
