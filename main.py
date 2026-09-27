@@ -268,7 +268,7 @@ def initialize_database(self):
 def check_reminders(self):
         print("Reminder Service Started.")
         while True:
-            now = datetime.datetime.now()
+            now = datetime.now()
             current_date = now.strftime("%Y-%m-%d")
             current_time = now.strftime("%H:%M")
 
@@ -394,6 +394,9 @@ start_reminder_service()
 # TEMPORARY TEST
 def handle_power_commands(command):
     command = command.lower().strip()
+
+    if sys.platform != "win32":
+        return False
 
     shutdown_commands = [
         "shutdown",
