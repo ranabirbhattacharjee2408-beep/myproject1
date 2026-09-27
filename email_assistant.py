@@ -1,11 +1,23 @@
 import abc
-from urllib import response
-from xml.parsers.expat import model
 
 from config import GEMINI_API_KEY
 from google import genai
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+client = None
+
+
+def _get_client():
+    global client
+
+    if client is None:
+        if not GEMINI_API_KEY:
+            raise RuntimeError(
+                "GEMINI_API_KEY is not configured. "
+                "Add it to your environment before using email drafting."
+            )
+        client = genai.Client(api_key=GEMINI_API_KEY)
+
+    return client
 
 
 
@@ -46,7 +58,7 @@ class GeminiEmail(Email):
             "User Request:\n"
             f"{prompt}\n"
         )
-        response = client.models.generate_content(
+        response = _get_client().models.generate_content(
          model="gemini-2.5-flash",
          contents=template
              )
@@ -63,7 +75,7 @@ class GeminiEmail(Email):
             "Instruction:\n"
             f"{instruction}\n"
         )
-        response = client.models.generate_content(
+        response = _get_client().models.generate_content(
             model="gemini-2.5-flash",
             contents=template
         )
