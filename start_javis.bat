@@ -1,5 +1,10 @@
 @echo off
-D:
-cd \JARVIS
-D:\JARVIS\.venv\Scripts\python.exe D:\JARVIS\main.py
+cd /d "%~dp0"
+if not exist ".venv\Scripts\python.exe" (
+  echo JARVIS is not installed yet.
+  echo Run build_windows.ps1 first.
+  pause
+  exit /b 1
+)
+".venv\Scripts\python.exe" "main.py"
 pause
