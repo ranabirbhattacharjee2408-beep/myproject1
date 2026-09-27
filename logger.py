@@ -1,10 +1,11 @@
 import logging
 import traceback
-from pathlib import Path
 
-# Create a logs folder if it doesn't exist
-log_dir = Path("logs")
-log_dir.mkdir(exist_ok=True)
+from config import DATA_DIR
+
+
+log_dir = DATA_DIR / "logs"
+log_dir.mkdir(parents=True, exist_ok=True)
 
 # Configure logging
 logging.basicConfig(
