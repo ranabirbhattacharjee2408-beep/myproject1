@@ -3,8 +3,10 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-python3 -m venv .venv
+python_bin="$(command -v python3.12 || command -v python3)"
+"$python_bin" -m venv .venv
 source .venv/bin/activate
+rm -rf build dist release
 python -m pip install --upgrade pip
 python -m pip install -r requirements-desktop.txt
 python -m pip install pyinstaller
