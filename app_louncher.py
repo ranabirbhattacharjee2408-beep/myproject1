@@ -1,11 +1,17 @@
 import os
+import platform
+import subprocess
 
 app_index = {}
 
-start_menu_paths = [
-    os.path.join(os.environ["APPDATA"], r"Microsoft\Windows\Start Menu\Programs"),
-    os.path.join(os.environ["PROGRAMDATA"], r"Microsoft\Windows\Start Menu\Programs")
-]
+start_menu_paths = []
+if platform.system() == "Windows":
+    for root_name in ("APPDATA", "PROGRAMDATA"):
+        root = os.environ.get(root_name)
+        if root:
+            start_menu_paths.append(
+                os.path.join(root, r"Microsoft\Windows\Start Menu\Programs")
+            )
 
 for folder in start_menu_paths:
     if os.path.exists(folder):
@@ -16,6 +22,16 @@ for folder in start_menu_paths:
                     app_index[name] = os.path.join(root, file)
 
 print(f"Loaded {len(app_index)} applications.")
+
+
+def _open_path(path):
+    if hasattr(os, "startfile"):
+        os.startfile(path)
+        return
+
+    opener = "open" if platform.system() == "Darwin" else "xdg-open"
+    subprocess.Popen([opener, path])
+
 
 def open_app(command):
     command = command.lower().strip()
@@ -32,13 +48,13 @@ def open_app(command):
 
     # Exact match
     if command in app_index:
-        os.startfile(app_index[command])
+        _open_path(app_index[command])
         return True
 
     # Partial match
     for name, path in app_index.items():
         if command in name:
-            os.startfile(path)
+            _open_path(path)
             return True
 
     return False
