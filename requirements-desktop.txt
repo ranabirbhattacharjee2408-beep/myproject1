@@ -10,7 +10,6 @@ google-genai
 mistralai
 Pillow
 PyAudio
-PyAutoGUI
 pygame
 pyttsx3
 pywhatkit

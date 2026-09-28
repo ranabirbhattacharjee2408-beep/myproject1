@@ -245,62 +245,6 @@ def get_recent_messages(limit=20):
 
 
  
-def __init__(self, db_name=str(DB_FILE), poll_interval=30):
-        self.db_name = db_name
-        self.poll_interval = poll_interval
-        self.initialize_database()
-
-def initialize_database(self):
-        conn = sqlite3.connect(self.db_name)
-        cursor = conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS reminders(
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                reminder_date TEXT NOT NULL,
-                reminder_time TEXT NOT NULL,
-                completed INTEGER DEFAULT 0
-            )
-        """)
-        conn.commit()
-        conn.close()
-
-def check_reminders(self):
-        print("Reminder Service Started.")
-        while True:
-            now = datetime.now()
-            current_date = now.strftime("%Y-%m-%d")
-            current_time = now.strftime("%H:%M")
-
-            conn = sqlite3.connect(self.db_name)
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT id, title
-                FROM reminders
-                WHERE reminder_date=? AND reminder_time=? AND completed=0
-            """, (current_date, current_time))
-
-            reminders = cursor.fetchall()
-            for reminder_id, title in reminders:
-                print("Reminder Triggered:", reminder_id, title)
-                speak(f"Reminder. {title}")
-                cursor.execute("""
-                    UPDATE reminders
-                    SET completed=1
-                    WHERE id=?
-                """, (reminder_id,))
-                conn.commit()
-
-            conn.close()
-            time.sleep(self.poll_interval)
-
-def start(self):
-        thread = threading.Thread(
-            target=self.check_reminders,
-            daemon=True
-        )
-        thread.start()
-        return thread
 
 
 # SPEECH FUNCTIONS
@@ -311,10 +255,6 @@ conn.commit()
 
 
 
-def update_status(text):
-    global status
-    if status:
-        status.set(text)
 def translate_to_english(text):
     try:
         translated = GoogleTranslator(
@@ -437,8 +377,6 @@ def internet_available():
     except requests.RequestException:
         return False
 
-def open_writing_mode():
-    writing_window = None
 
 
 # ============================================================
@@ -455,71 +393,6 @@ writing_window = None
 writing_window = None
 
 
-def _create_writing_mode():
-
-    global writing_window
-
-    try:
-
-        # ------------------------------------------------------
-        # Already open?
-        # ------------------------------------------------------
-
-        if writing_window is not None:
-
-            try:
-
-                if writing_window.window.winfo_exists():
-
-                    writing_window.window.deiconify()
-                    writing_window.window.lift()
-                    writing_window.window.focus_force()
-
-                    print(
-                        "[JARVIS] Writing Mode already open."
-                    )
-
-                    return
-
-            except Exception:
-
-                writing_window = None
-
-        # ------------------------------------------------------
-        # Create Writing Mode
-        # ------------------------------------------------------
-
-        print(
-            "[JARVIS] Creating Writing Mode..."
-        )
-
-        writing_window = WritingMode(
-            tk_root
-        )
-
-        writing_window.window.deiconify()
-        writing_window.window.lift()
-        writing_window.window.focus_force()
-
-        print(
-            "[JARVIS] Writing Mode opened successfully."
-        )
-
-    except Exception as e:
-
-        print(
-            "[WRITING MODE ERROR]",
-            e
-        )
-
-        traceback.print_exc()
-
-        try:
-            speak(
-                "I couldn't open writing mode."
-            )
-        except Exception:
-            pass
 
 
 def open_writing_mode():
@@ -548,20 +421,6 @@ def open_writing_mode():
     except Exception as e:
         print("[WRITING MODE ERROR]", e)
         traceback.print_exc()
-def start_tk_system():
-    global tk_root
-
-    print("[JARVIS] Starting Tkinter system...")
-
-    tk_root = tk.Tk()
-
-    # Hide the empty root window
-    tk_root.withdraw()
-
-    print("[JARVIS] Tkinter system ready.")
-
-    # This MUST run continuously
-    tk_root.mainloop()
 def aicommand(command):
     if not internet_available():
         return "You're offline. Please check your internet connection."

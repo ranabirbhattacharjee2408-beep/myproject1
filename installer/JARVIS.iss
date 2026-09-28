@@ -5,30 +5,32 @@
 #define SourceDir ".."
 
 [Setup]
-AppId={{8F7E7D6A-6B4C-4E0D-9A11-JARVIS2026}}
+AppId={{7C2B6F1E-4D5A-4B7E-9C3A-2F8E1D6A9B40}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-
 DefaultDirName={autopf}\JARVIS
 DefaultGroupName=JARVIS
-
 OutputDir=output
 OutputBaseFilename=JARVIS_Setup
-
+SetupIconFile={#SourceDir}\JARVIS.ico
+UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma
 SolidCompression=yes
-
 WizardStyle=modern
+ArchitecturesInstallIn64BitMode=x64compatible
+PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog
 
-UninstallDisplayIcon={app}\JARVIS.exe
+[Tasks]
+Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 
 [Files]
 Source: "{#SourceDir}\dist\JARVIS\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\JARVIS"; Filename: "{app}\JARVIS.exe"
-Name: "{commondesktop}\JARVIS"; Filename: "{app}\JARVIS.exe"
+Name: "{group}\JARVIS"; Filename: "{app}\{#MyAppExeName}"
+Name: "{autodesktop}\JARVIS"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch JARVIS"; Flags: nowait postinstall skipifsilent

@@ -25,9 +25,6 @@ release/
 logs/
 *.log
 
-# ===== AUDIO =====
-*.mp3
-*.wav
 
 # ===== IDE =====
 .vscode/
@@ -41,3 +38,7 @@ installer/output/
 
 # ===== LOCAL BUILD METADATA =====
 *.spec.bak
+
+# ===== APP LOGS / DRAFTS =====
+console.log
+draft.txt

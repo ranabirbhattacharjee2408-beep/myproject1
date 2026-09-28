@@ -82,15 +82,25 @@ class GeminiEmail(Email):
         self.email = response.text
         return self.email
 
-    def save(self, path: str = "draft.txt") -> None:
+    def save(self, path=None) -> None:
+        from config import DATA_DIR
+        path = path or str(DATA_DIR / "draft.txt")
         with open(path, "w", encoding="utf-8") as f:
             f.write(self.email)
 
 
 def takeCommand(prompt_text: str = "Command: ") -> str:
-    """Simple replacement for voice command input: read from stdin."""
+    """Read a command from the console, or by voice when there is no console
+    (e.g. the packaged desktop app)."""
+    import sys
     try:
-        return input(prompt_text).strip()
+        if sys.stdin is not None and sys.stdin.isatty():
+            return input(prompt_text).strip()
+    except Exception:
+        pass
+    try:
+        from audio.microphone import listen
+        return (listen(timeout=8, phrase_time_limit=8) or "").strip()
     except Exception:
         return ""
 

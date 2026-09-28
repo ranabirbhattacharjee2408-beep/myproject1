@@ -1,44 +1,53 @@
-﻿# -*- mode: python ; coding: utf-8 -*-
-
+# -*- mode: python ; coding: utf-8 -*-
+# Single build spec for JARVIS (Windows .exe folder / macOS .app).
 from pathlib import Path
 import sys
 
-from PyInstaller.utils.hooks import collect_submodules
-
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 ROOT = Path(SPECPATH)
+
+
+def safe(fn, *args):
+    try:
+        return fn(*args)
+    except Exception:
+        return []
+
+
 hiddenimports = (
-    collect_submodules("google.genai")
-    + collect_submodules("mistralai")
+    safe(collect_submodules, "google.genai")
+    + safe(collect_submodules, "mistralai")
+    + safe(collect_submodules, "pyttsx3.drivers")
+    + safe(collect_submodules, "dateparser")
+    + [
+        "desktop_bot", "audio.microphone", "edge_tts", "speech_recognition",
+        "pygame", "wikipedia", "pywhatkit", "deep_translator",
+    ]
 )
+
+# customtkinter ships theme JSON/fonts that MUST be bundled or the window crashes
+datas = (
+    safe(collect_data_files, "customtkinter")
+    + safe(collect_data_files, "speech_recognition")
+    + safe(collect_data_files, "dateparser")
+    + safe(collect_data_files, "certifi")
+    + [(str(ROOT / "bot.png"), "."), (str(ROOT / "JARVIS.ico"), ".")]
+)
+
 icon = str(ROOT / "JARVIS.ico") if sys.platform == "win32" else None
 
 a = Analysis(
-    ["main.py"],
+    ["launcher.py"],
     pathex=[str(ROOT)],
     binaries=[],
-    datas=[
-        (str(ROOT / "bot.png"), "."),
-        (str(ROOT / "bot_assets"), "bot_assets"),
-    ],
+    datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
-    hooksconfig={},
     runtime_hooks=[],
-    excludes=[
-        "client",
-        "cloudflare_test",
-        "gemini_test",
-        "ollama_ai",
-        "test",
-        "test_calendar",
-        "test_logger",
-        "test_mistral",
-    ],
+    excludes=[],
     noarchive=False,
-    optimize=0,
 )
-
 pyz = PYZ(a.pure)
 
 exe = EXE(
@@ -48,24 +57,27 @@ exe = EXE(
     exclude_binaries=True,
     name="JARVIS",
     debug=False,
-    bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,          # UPX often triggers antivirus false-positives
     console=False,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
     icon=icon,
 )
 
 coll = COLLECT(
-    exe,
-    a.binaries,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name="JARVIS",
+    exe, a.binaries, a.datas,
+    strip=False, upx=False, name="JARVIS",
 )
+
+if sys.platform == "darwin":
+    app = BUNDLE(
+        coll,
+        name="JARVIS.app",
+        icon=None,
+        bundle_identifier="com.jarvis.assistant",
+        info_plist={
+            "NSMicrophoneUsageDescription": "JARVIS listens for your voice commands.",
+            "NSAppleEventsUsageDescription": "JARVIS opens apps on your behalf.",
+            "CFBundleShortVersionString": "1.0.0",
+            "NSHighResolutionCapable": True,
+        },
+    )

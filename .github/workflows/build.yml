@@ -1,0 +1,46 @@
+name: Build JARVIS installers
+
+on:
+  workflow_dispatch:        # "Run workflow" button in the Actions tab
+  push:
+    tags: ["v*"]            # or push a tag like v1.0.0
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+      - name: Build
+        shell: pwsh
+        run: ./build_windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JARVIS-Windows-Installer
+          path: installer/output/JARVIS_Setup.exe
+          if-no-files-found: error
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install PortAudio
+        run: brew install portaudio
+      - name: Build
+        env:
+          CFLAGS: -I/opt/homebrew/include
+          LDFLAGS: -L/opt/homebrew/lib
+        run: ./build_macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JARVIS-macOS-DMG
+          path: release/JARVIS.dmg
+          if-no-files-found: error
