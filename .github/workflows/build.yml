@@ -1,4 +1,4 @@
-name: Build JARVIS installers
+name: Build JARVIS installer
 
 on:
   workflow_dispatch:
@@ -33,28 +33,21 @@ jobs:
       - name: Verify PyInstaller output
         shell: pwsh
         run: |
-          Write-Host "Checking PyInstaller output..."
-
           if (Test-Path "dist\JARVIS\JARVIS.exe") {
-              $file = Get-Item "dist\JARVIS\JARVIS.exe"
-              Write-Host "JARVIS.exe found:"
-              Write-Host $file.FullName
-              Write-Host "Size: $($file.Length) bytes"
+              Write-Host "JARVIS.exe found successfully."
           }
           else {
-              Write-Error "dist\JARVIS\JARVIS.exe was not found."
+              Write-Error "JARVIS.exe was not found."
               exit 1
           }
 
       - name: Build Windows installer with Inno Setup
         shell: pwsh
         run: |
-          Write-Host "Building JARVIS Windows installer..."
-
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
 
           if (!(Test-Path $iscc)) {
-              Write-Error "Inno Setup compiler was not found at $iscc"
+              Write-Error "Inno Setup compiler was not found."
               exit 1
           }
 
@@ -63,15 +56,13 @@ jobs:
           & $iscc /O"installer\output" "installer\JARVIS.iss"
 
           if ($LASTEXITCODE -ne 0) {
-              Write-Error "Inno Setup failed with exit code $LASTEXITCODE"
+              Write-Error "Inno Setup failed."
               exit $LASTEXITCODE
           }
 
       - name: Find generated Windows installer
         shell: pwsh
         run: |
-          Write-Host "Searching for installer EXE..."
-
           Get-ChildItem -Path "installer\output" -Filter "*.exe" -Recurse |
             Select-Object FullName, Length
 
@@ -80,39 +71,4 @@ jobs:
         with:
           name: JARVIS-Windows-Installer
           path: installer/output/*.exe
-          if-no-files-found: error
-
-
-  macos:
-    runs-on: macos-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install PortAudio
-        run: brew install portaudio
-
-      - name: Build macOS DMG
-        env:
-          CFLAGS: -I/opt/homebrew/include
-          LDFLAGS: -L/opt/homebrew/lib
-        run: ./build_macos.sh
-
-      - name: Find generated macOS files
-        shell: bash
-        run: |
-          echo "Searching for DMG files..."
-          find . -type f -name "*.dmg" -print
-
-      - name: Upload macOS DMG
-        uses: actions/upload-artifact@v4
-        with:
-          name: JARVIS-macOS-DMG
-          path: release/*.dmg
           if-no-files-found: error
