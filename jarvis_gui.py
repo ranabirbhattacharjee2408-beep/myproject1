@@ -49,6 +49,8 @@ class JarvisGUI:
         self.on_writing = None   # callback()
         self.on_stop = None      # callback()
         self.on_close = None     # callback()
+        self.on_voice_toggle = None  # callback(bool)  speak replies aloud
+        self.on_mic_toggle = None    # callback(bool)  listen to microphone
 
         self.angle = 0
         self.status = "STARTING"
@@ -65,6 +67,9 @@ class JarvisGUI:
     # ------------------------------------------------------------------
     def log(self, text):
         self._q.put(("log", text))
+
+    def chat(self, role, text):
+        self._q.put(("chat", (role, text)))
 
     def set_status(self, status):
         self._q.put(("status", status.upper()))
@@ -111,6 +116,10 @@ class JarvisGUI:
             font=("Consolas", 12), wrap="word",
         )
         self.console.grid(row=1, column=0, sticky="nsew", padx=12, pady=6)
+        tb = self.console._textbox
+        tb.tag_config("you", foreground=CYAN)
+        tb.tag_config("jarvis", foreground="#B9FFC9")
+        tb.tag_config("dim", foreground="#7F9AAA")
         self.console.configure(state="disabled")
 
         row = ctk.CTkFrame(side, fg_color="transparent")
@@ -125,8 +134,22 @@ class JarvisGUI:
             row=0, column=1
         )
 
+        sw = ctk.CTkFrame(side, fg_color="transparent")
+        sw.grid(row=3, column=0, sticky="ew", padx=12, pady=(0, 6))
+        sw.grid_columnconfigure((0, 1), weight=1)
+        self.voice_var = tk.BooleanVar(value=True)
+        self.mic_var = tk.BooleanVar(value=True)
+        ctk.CTkSwitch(
+            sw, text="Speak replies", variable=self.voice_var,
+            command=lambda: self.on_voice_toggle and self.on_voice_toggle(self.voice_var.get()),
+        ).grid(row=0, column=0, sticky="w")
+        ctk.CTkSwitch(
+            sw, text="Microphone", variable=self.mic_var,
+            command=lambda: self.on_mic_toggle and self.on_mic_toggle(self.mic_var.get()),
+        ).grid(row=0, column=1, sticky="w")
+
         btns = ctk.CTkFrame(side, fg_color="transparent")
-        btns.grid(row=3, column=0, sticky="ew", padx=12, pady=(0, 16))
+        btns.grid(row=4, column=0, sticky="ew", padx=12, pady=(0, 16))
         btns.grid_columnconfigure((0, 1), weight=1)
         ctk.CTkButton(
             btns, text="Writing Mode",
@@ -142,7 +165,7 @@ class JarvisGUI:
         if not text:
             return
         self.entry.delete(0, "end")
-        self._append(f"> {text}")
+        self._append(f"You: {text}", "you")
         if self.on_command:
             self.on_command(text)
 
@@ -211,7 +234,10 @@ class JarvisGUI:
                 return
             try:
                 if kind == "log":
-                    self._append(payload)
+                    self._append(payload, "dim")
+                elif kind == "chat":
+                    role, text = payload
+                    self._append(f"{role}: {text}", role.lower())
                 elif kind == "status":
                     self.status = payload
                 elif kind == "call":
@@ -219,9 +245,9 @@ class JarvisGUI:
             except Exception as error:  # never kill the UI loop
                 self._append(f"[GUI ERROR] {error}")
 
-    def _append(self, text):
+    def _append(self, text, tag=None):
         self.console.configure(state="normal")
-        self.console.insert("end", text + "\n")
+        self.console._textbox.insert("end", text + "\n", tag or ())
         if int(self.console.index("end-1c").split(".")[0]) > 1200:
             self.console.delete("1.0", "200.0")
         self.console.see("end")

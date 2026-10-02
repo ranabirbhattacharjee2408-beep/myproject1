@@ -9,6 +9,7 @@ import sys
 import socket
 import subprocess
 import threading
+import time
 import traceback
 from pathlib import Path
 
@@ -114,8 +115,6 @@ class Tee:
                 if self.file:
                     self.file.write(line + "\n")
                 self.on_line(line)
-                if not line.startswith("[BOT CONTROL]"):
-                    self.gui.log(line)
         return len(s)
 
     def flush(self):
@@ -123,6 +122,14 @@ class Tee:
 
     def isatty(self):
         return False
+
+
+# Lines kept in console.log only (too noisy for the window)
+QUIET = (
+    "Listening for wake word", "Waiting for command", "[WAKE LISTEN]",
+    "[VOICE] Listening timeout", "[VOICE] Could not understand",
+    "[BOT CONTROL]", "pygame ", "Hello from the pygame", "Mixer initialized",
+)
 
 
 def status_for(line):
@@ -177,8 +184,16 @@ def main_app():
     from jarvis_gui import JarvisGUI
 
     gui = JarvisGUI()
-    sys.stdout = Tee(gui, data_dir() / "console.log",
-                     lambda l: (status_for(l) and gui.set_status(status_for(l))))
+    def route(line):
+        st = status_for(line)
+        if st:
+            gui.set_status(st)
+        if line.startswith("[COMMAND] "):
+            gui.chat("You", line[len("[COMMAND] "):])
+        elif not any(line.startswith(p) or p in line for p in QUIET):
+            gui.log(line)
+
+    sys.stdout = Tee(gui, data_dir() / "console.log", route)
     sys.stderr = sys.stdout
     print("[JARVIS] Starting…")
 
@@ -186,6 +201,7 @@ def main_app():
         import main as jarvis
         from writing_mode import WritingMode
         from speak import stop_speaking
+        import speak as speak_mod
     except Exception:
         print("[FATAL] Could not load JARVIS core:")
         traceback.print_exc()
@@ -206,6 +222,23 @@ def main_app():
             jarvis.writing_window = WritingMode(gui.root)
             jarvis.writing_window.window.lift()
         gui.call_soon(create)
+
+    # Every reply also appears as text; voice/mic can be switched off so the
+    # app works as a normal typed chat assistant.
+    speak_mod.add_listener(lambda t: (gui.chat("JARVIS", t), gui.set_status("SPEAKING")))
+    gui.on_voice_toggle = lambda on: speak_mod.set_muted(not on)
+
+    mic = {"on": True}
+    real_listen = jarvis.listen
+
+    def gated_listen(*a, **k):
+        if not mic["on"]:
+            time.sleep(0.5)
+            return None
+        return real_listen(*a, **k)
+
+    jarvis.listen = gated_listen
+    gui.on_mic_toggle = lambda on: mic.__setitem__("on", on)
 
     jarvis.open_writing_mode = open_writing
     gui.on_writing = open_writing

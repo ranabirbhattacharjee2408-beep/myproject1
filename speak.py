@@ -82,11 +82,32 @@ def offline_speak(text):
         engine.runAndWait()
     except Exception as e:
         log_error("Offline TTS", e)
+# UI hooks: the desktop window shows every reply as text, and can mute audio.
+listeners = []
+muted = False
+
+
+def add_listener(fn):
+    listeners.append(fn)
+
+
+def set_muted(value):
+    global muted
+    muted = bool(value)
+
+
+def _notify(text):
+    for fn in list(listeners):
+        try:
+            fn(text)
+        except Exception as e:
+            log_error("speak listener", e)
+
+
 def speak(text):
     global speaking, stop_requested
 
-    print(">>> speak() called")
-    print("Text:", text)
+    _notify(text)
 
     if text.lower() not in [
         "yes sir",
@@ -96,6 +117,9 @@ def speak(text):
         "initializing jarvis"
     ]:
         save_message("assistant", text)
+
+    if muted:
+        return
 
     try:
         temp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
