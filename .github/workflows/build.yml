@@ -1,46 +1,82 @@
-name: Build JARVIS installers
+name: Build JARVIS Windows Installer
 
 on:
-  workflow_dispatch:        # "Run workflow" button in the Actions tab
+  workflow_dispatch:
+
   push:
-    tags: ["v*"]            # or push a tag like v1.0.0
+    tags: ["v*"]
 
 jobs:
   windows:
     runs-on: windows-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
       - name: Install Inno Setup
         shell: pwsh
-        run: choco install innosetup -y --no-progress
-      - name: Build
+        run: |
+          choco install innosetup -y --no-progress
+
+      - name: Build JARVIS with PyInstaller
         shell: pwsh
-        run: ./build_windows.ps1
-      - uses: actions/upload-artifact@v4
+        run: |
+          ./build_windows.ps1
+
+      - name: Verify JARVIS executable
+        shell: pwsh
+        run: |
+          Write-Host "Checking PyInstaller output..."
+
+          if (Test-Path "dist\JARVIS\JARVIS.exe") {
+              $file = Get-Item "dist\JARVIS\JARVIS.exe"
+              Write-Host "Found JARVIS.exe"
+              Write-Host "Path: $($file.FullName)"
+              Write-Host "Size: $($file.Length) bytes"
+          }
+          else {
+              Write-Error "JARVIS.exe was not found."
+              exit 1
+          }
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          Write-Host "Building Windows installer..."
+
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+
+          if (!(Test-Path $iscc)) {
+              Write-Error "Inno Setup compiler not found."
+              exit 1
+          }
+
+          New-Item -ItemType Directory -Force -Path "installer\output" | Out-Null
+
+          & $iscc /O"installer\output" "installer\JARVIS.iss"
+
+          if ($LASTEXITCODE -ne 0) {
+              Write-Error "Inno Setup failed with exit code $LASTEXITCODE"
+              exit $LASTEXITCODE
+          }
+
+      - name: Find installer
+        shell: pwsh
+        run: |
+          Write-Host "Searching for generated installer..."
+
+          Get-ChildItem "installer\output" -Filter "*.exe" -Recurse |
+            Select-Object FullName, Length
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
         with:
           name: JARVIS-Windows-Installer
-          path: installer/output/JARVIS_Setup.exe
-          if-no-files-found: error
-
-  macos:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install PortAudio
-        run: brew install portaudio
-      - name: Build
-        env:
-          CFLAGS: -I/opt/homebrew/include
-          LDFLAGS: -L/opt/homebrew/lib
-        run: ./build_macos.sh
-      - uses: actions/upload-artifact@v4
-        with:
-          name: JARVIS-macOS-DMG
-          path: release/JARVIS.dmg
+          path: installer/output/*.exe
           if-no-files-found: error
