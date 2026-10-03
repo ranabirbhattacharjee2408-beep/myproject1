@@ -184,14 +184,20 @@ def main_app():
     from jarvis_gui import JarvisGUI
 
     gui = JarvisGUI()
+
     def route(line):
+        # Nothing here renders a scrolling console; every line still goes
+        # to console.log on disk (see Tee below). Only three things ever
+        # reach the screen: the status ring, the voice-recognized command
+        # (as a caption), and a short error caption if something crashes.
         st = status_for(line)
         if st:
             gui.set_status(st)
         if line.startswith("[COMMAND] "):
             gui.chat("You", line[len("[COMMAND] "):])
-        elif not any(line.startswith(p) or p in line for p in QUIET):
-            gui.log(line)
+        elif line.startswith("[FATAL]") or line.startswith("Traceback"):
+            gui.chat("JARVIS", "Something went wrong — check console.log", error=True)
+            gui.set_status("ERROR")
 
     sys.stdout = Tee(gui, data_dir() / "console.log", route)
     sys.stderr = sys.stdout
