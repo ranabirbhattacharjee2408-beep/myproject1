@@ -32,5 +32,6 @@ Source: "{#SourceDir}\dist\JARVIS\*"; DestDir: "{app}"; Flags: ignoreversion rec
 Name: "{group}\JARVIS"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\JARVIS"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
-[Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "Launch JARVIS"; Flags: nowait postinstall skipifsilent
+[Icons]
+Name: "{group}\JARVIS"; Filename: "{app}\{#MyAppExeName}"
+Name: "{autodesktop}\JARVIS"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
